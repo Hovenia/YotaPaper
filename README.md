@@ -105,6 +105,7 @@ adb shell am start -n com.yota.launcher/.LauncherActivity
 
 | 文档 | 说明 |
 |---|---|
+| [CHANGELOG.md](CHANGELOG.md) | 发布日志 / 更新日志 |
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | 完整使用说明（交互逻辑） |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构与源码结构 |
 | [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) | 第三方依赖与许可证 |
