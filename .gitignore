@@ -16,6 +16,10 @@ captures/
 keystore.properties
 *.jks
 *.keystore
+keystore/
+
+# Local release artifacts (attach to GitHub Releases instead of committing)
+release/
 
 # Logs & dumps
 *.log
