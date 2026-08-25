@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+            <!-- APPS -->
+            <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+                android:id="@+id/pageApps"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone">
+
+                <com.yota.launcher.ui.EInkLauncherView
+                    android:id="@+id/gridApps"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="24dp"
+                    android:layout_marginEnd="24dp"
+                    android:layout_marginTop="12dp"
+                    android:layout_marginBottom="12dp"
+                    android:paddingTop="16dp"
+                    android:paddingBottom="16dp" />
+
+                <TextView
+                    android:id="@+id/manageToggle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginStart="20dp"
+                    android:fontFamily="serif"
+                    android:text="@string/manage"
+                    android:textColor="@color/gray"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/textPage"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|end"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginEnd="20dp"
+                    android:fontFamily="serif"
+                    android:text="@string/page_placeholder"
+                    android:textColor="@color/gray"
+                    android:textSize="13sp" />
+            </FrameLayout>

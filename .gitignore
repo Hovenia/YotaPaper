@@ -1,0 +1,28 @@
+# Gradle / Android build outputs
+.gradle/
+build/
+app/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Signing
+keystore.properties
+*.jks
+*.keystore
+
+# Logs & dumps
+*.log
+*.hprof
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Keep local SDK stub jars in libs/ tracked

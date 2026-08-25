@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="paper">#FAFAF7</color>
+    <color name="ink">#1A1A1A</color>
+    <color name="gray">#8A8A8A</color>
+    <color name="hairline">#D5D5D0</color>
+</resources>
