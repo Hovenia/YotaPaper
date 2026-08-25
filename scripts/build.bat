@@ -15,8 +15,9 @@ if "%SDK_DIR%"=="" if not "%ANDROID_SDK_ROOT%"=="" set "SDK_DIR=%ANDROID_SDK_ROO
 
 if "%SDK_DIR%"=="" if exist "%LOCALAPPDATA%\Android\Sdk" set "SDK_DIR=%LOCALAPPDATA%\Android\Sdk"
 if "%SDK_DIR%"=="" if exist "C:\Android\Sdk" set "SDK_DIR=C:\Android\Sdk"
-rem Last-resort fallback: SDK kept next to this repository (or the author's dev path).
+rem Fallback: SDK kept inside the repo, next to it, or next to its parent folder.
 if "%SDK_DIR%"=="" if exist "%~dp0..\android-sdk" set "SDK_DIR=%~dp0..\android-sdk"
+if "%SDK_DIR%"=="" if exist "%~dp0..\..\android-sdk" set "SDK_DIR=%~dp0..\..\android-sdk"
 
 if "%SDK_DIR%"=="" (
     echo [ERROR] Android SDK not found.

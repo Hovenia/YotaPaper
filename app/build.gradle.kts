@@ -8,7 +8,7 @@ android {
     enableKotlin = true
 
     defaultConfig {
-        applicationId = "com.yota.paperlauncher"
+        applicationId = "com.yota.launcher"
         minSdk = 17
         targetSdk = 36
         versionCode = 3
