@@ -91,6 +91,8 @@ class LauncherActivity : Activity() {
     private var appsAll: List<ResolveInfo> = emptyList()
     private var appsPageIndex = 0
     private var appsPageCount = 0
+    private var currentPage = -1 // 记录当前所在主页页面
+
     // Non-Yota fallback: all EPD SDK features are skipped and the
     // refresh/animation settings group is hidden.
     private var yotaDevice = false
@@ -297,7 +299,7 @@ class LauncherActivity : Activity() {
         }, 500)
         StartupTracer.stage("postRefreshApps")
 
-        selectPage(PAGE_HOME)
+        selectPage(PAGE_HOME, animate = false)
         StartupTracer.stage("selectPage")
 
         registerTimeReceiver()
@@ -372,7 +374,7 @@ class LauncherActivity : Activity() {
     private fun handleHomeIntent(intent: Intent?) {
         if (intent?.action != Intent.ACTION_MAIN) return
         val isHome = intent.categories?.contains(Intent.CATEGORY_HOME) == true ||
-            intent.categories?.contains(EPD_HOME_CATEGORY) == true
+                intent.categories?.contains(EPD_HOME_CATEGORY) == true
         if (!isHome) return
 
         // Donation prompt is modal-ish: ignore further HOME presses while it is up.
@@ -587,9 +589,17 @@ class LauncherActivity : Activity() {
                 if (!manageMode) showActionSheet(info)
             }
         })
+
+        // 修改边界滑动的响应，让手势可以切换三大主页
         gridApps.setOnPageChangeListener(object : EInkLauncherView.OnPageChangeListener {
-            override fun onNextPage() = showAppsPage(appsPageIndex + 1)
-            override fun onPrevPage() = showAppsPage(appsPageIndex - 1)
+            override fun onNextPage() {
+                if (appsPageIndex < appsPageCount - 1) showAppsPage(appsPageIndex + 1)
+                else selectPage(PAGE_SETTINGS, animate = true) // 最后一页继续左滑去设置
+            }
+            override fun onPrevPage() {
+                if (appsPageIndex > 0) showAppsPage(appsPageIndex - 1)
+                else selectPage(PAGE_HOME, animate = true) // 第一页继续右滑去主页
+            }
         })
     }
 
@@ -634,6 +644,28 @@ class LauncherActivity : Activity() {
             store.setDonationPromptEnabled(!store.isDonationPromptEnabled())
             updateDonationPromptValue()
         }
+
+        // 给设置页（ScrollView）加上全局手势检测，允许右滑退回到应用网格
+        val gestureDetector = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
+            private val SWIPE_THRESHOLD = 80
+            private val SWIPE_VELOCITY_THRESHOLD = 100
+            override fun onFling(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                if (e1 == null) return false
+                val diffX = e2.x - e1.x
+                val diffY = e2.y - e1.y
+                if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > SWIPE_THRESHOLD && Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
+                    if (diffX > 0) { // 向右滑 (手指从左往右移)，回到应用页
+                        selectPage(PAGE_APPS, animate = true)
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+        pageSettings.setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
+            false // 放行，保证原本 ScrollView 的上下滑动不受影响
+        }
     }
 
     private fun onConfigChanged(newConfig: LauncherConfig, affected: Int) {
@@ -668,14 +700,17 @@ class LauncherActivity : Activity() {
             override fun onItemClick(info: ResolveInfo) = launchApp(info)
             override fun onItemLongClick(info: ResolveInfo) = showActionSheet(info)
         })
-        gridHome.setOnPageChangeListener(null)
-        // gridApps 的监听在 ensureAppsPage() 中懒加载后绑定
+        // 主页向左滑进入应用页
+        gridHome.setOnPageChangeListener(object : EInkLauncherView.OnPageChangeListener {
+            override fun onNextPage() = selectPage(PAGE_APPS, animate = true)
+            override fun onPrevPage() = Unit // 主页已经是第一页，向右滑不做处理
+        })
     }
 
     private fun refreshHome() {
         val apps = repository.loadApps()
         StartupTracer.stage("refreshHome-loadApps")
-        gridHome.configure(config.homeColumns, config.homeRows)
+        gridHome.configure(config.homeColumns, config.homeRows, config.iconSize) // 传入图标大小
         val limit = config.homeColumns * config.homeRows
         val sorted = repository.sortHomeApps(apps, limit)
         StartupTracer.stage("refreshHome-sort")
@@ -694,7 +729,7 @@ class LauncherActivity : Activity() {
         appsLoaded = true
         appsAll = if (manageMode) repository.loadAllApps() else repository.loadApps()
         StartupTracer.stage("refreshApps-load")
-        gridApps.configure(config.columns, config.rows)
+        gridApps.configure(config.columns, config.rows, config.iconSize) // 传入图标大小
         appsPageCount =
             if (appsAll.isEmpty()) 0
             else ceil(appsAll.size.toDouble() / (config.columns * config.rows)).toInt()
@@ -722,16 +757,6 @@ class LauncherActivity : Activity() {
         val pageText = if (appsPageCount > 0) "${clamped + 1}/$appsPageCount" else "0/0"
         if (textPage.text != pageText) textPage.text = pageText
 
-        // Page-turn animation timing: EInkLauncherView.setApps only rebinds
-        // data and does NOT invalidate or request a draw. So arming the EPD
-        // animation right after setApps (and the textPage update) means the
-        // NEXT draw already carries the new page together with the animated
-        // full update. The animation reveals the new content instead of
-        // playing after the new content is already visible.
-        // Type: 0=off, 1=左右, 2=水平展开, 3=水平闭合,
-        //       4=上下, 5=垂直展开, 6=垂直闭合.
-        // Direction: delta > 0 means next page (finger swiped left, new page
-        // enters from the right/bottom), delta < 0 means previous page.
         if (previous != clamped) {
             val delta = clamped - previous
             val anim = when (config.pageAnimation) {
@@ -758,8 +783,8 @@ class LauncherActivity : Activity() {
 
     private fun setupTabs() {
         tabHome.setOnClickListener { onHomeClick() }
-        tabApps.setOnClickListener { selectPage(PAGE_APPS) }
-        tabSettings.setOnClickListener { selectPage(PAGE_SETTINGS) }
+        tabApps.setOnClickListener { selectPage(PAGE_APPS, animate = true) }
+        tabSettings.setOnClickListener { selectPage(PAGE_SETTINGS, animate = true) }
     }
 
     private fun onHomeClick() {
@@ -774,11 +799,17 @@ class LauncherActivity : Activity() {
             showRecentTasks()
         } else {
             lastHomeClickTime = now
-            selectPage(PAGE_HOME)
+            selectPage(PAGE_HOME, animate = true) // 改为带动画返回
         }
     }
 
-    private fun selectPage(page: Int) {
+    // 重构的跨主页切换及动画逻辑
+    private fun selectPage(page: Int, animate: Boolean = false) {
+        if (page == currentPage) return
+
+        val previous = currentPage
+        currentPage = page
+
         if (page == PAGE_APPS) {
             ensureAppsPage()
             if (!appsLoaded) refreshApps()
@@ -786,6 +817,22 @@ class LauncherActivity : Activity() {
         if (page == PAGE_SETTINGS) {
             ensureSettingsPage()
         }
+
+        // 处理跨三大主页的动画，跟随 Yota 高画质模式
+        if (animate && previous != -1 && yotaDevice && config.refreshMode == 0) {
+            val delta = page - previous
+            val anim = when (config.pageAnimation) {
+                2 -> EInkSdk.ANIM_HORIZONTAL_OPEN
+                3 -> EInkSdk.ANIM_HORIZONTAL_CLOSE
+                4 -> if (delta > 0) EInkSdk.ANIM_VERTICAL_BOTTOM else EInkSdk.ANIM_VERTICAL_TOP
+                5 -> EInkSdk.ANIM_VERTICAL_OPEN
+                6 -> EInkSdk.ANIM_VERTICAL_CLOSE
+                0 -> EInkSdk.ANIM_OFF
+                else -> if (delta > 0) EInkSdk.ANIM_HORIZONTAL_RIGHT else EInkSdk.ANIM_HORIZONTAL_LEFT
+            }
+            EInkSdk.applyPageTurn(window.decorView, anim)
+        }
+
         pageHome.visibility = if (page == PAGE_HOME) View.VISIBLE else View.GONE
         if (::pageApps.isInitialized) {
             pageApps.visibility = if (page == PAGE_APPS) View.VISIBLE else View.GONE
@@ -1124,7 +1171,7 @@ class LauncherActivity : Activity() {
         val url = "http://$ip:$WIFI_TRANSFER_PORT"
         wifiUrlText.text = url
         wifiHintText.text = getString(R.string.wifi_transfer_url_hint, url) + "\n" +
-            getString(R.string.wifi_transfer_folder_hint)
+                getString(R.string.wifi_transfer_folder_hint)
         wifiQr.setImageBitmap(QrCodes.generate(url, dp(300)))
         wifiOverlay.visibility = View.VISIBLE
     }
@@ -1216,10 +1263,17 @@ class LauncherActivity : Activity() {
         recentGrid.visibility = View.VISIBLE
         val columns = 4
         val rows = (apps.size + columns - 1) / columns
-        recentGrid.configure(columns, rows)
+        recentGrid.configure(columns, rows, config.iconSize)
+
+        // ==========================================
+        // 核心修改区：动态计算行高，代替写死的 76dp
+        // ==========================================
+        val rowHeight = config.iconSize + 34 // 使用 +34dp 给予大图标下方的文字更多一点呼吸空间
         recentGrid.layoutParams = recentGrid.layoutParams.apply {
-            height = dp(rows * 76)
+            height = dp(rows * rowHeight)
         }
+        // ==========================================
+
         recentGrid.setApps(
             pageApps = apps,
             selection = emptySet(),
@@ -1312,7 +1366,7 @@ class LauncherActivity : Activity() {
         )
         return if (mode == AppOpsManager.MODE_DEFAULT) {
             checkCallingOrSelfPermission(Manifest.permission.PACKAGE_USAGE_STATS) ==
-                PackageManager.PERMISSION_GRANTED
+                    PackageManager.PERMISSION_GRANTED
         } else {
             mode == AppOpsManager.MODE_ALLOWED
         }
@@ -1406,8 +1460,8 @@ class LauncherActivity : Activity() {
                     recentOverlay.visibility == View.VISIBLE -> hideRecentTasks()
                     actionOverlay.visibility == View.VISIBLE -> hideActionSheet()
                     manageMode -> exitManageMode()
-                    ::pageSettings.isInitialized && pageSettings.visibility == View.VISIBLE -> selectPage(PAGE_HOME)
-                    ::pageApps.isInitialized && pageApps.visibility == View.VISIBLE -> selectPage(PAGE_HOME)
+                    ::pageSettings.isInitialized && pageSettings.visibility == View.VISIBLE -> selectPage(PAGE_HOME, animate = true)
+                    ::pageApps.isInitialized && pageApps.visibility == View.VISIBLE -> selectPage(PAGE_HOME, animate = true)
                     else -> Unit
                 }
                 true

@@ -77,11 +77,21 @@ object IconLoader {
         val key = "$packageName|$iconPack|$autoLineIcons"
         cacheGet(key)?.let { return it }
 
-        val icon: Drawable? = when {
-            autoLineIcons -> loadLineIcon(context, info)
-            iconPack.isNotEmpty() -> loadFromIconPack(context.packageManager, info, iconPack)
-                ?: runCatching { info.loadIcon(context.packageManager) }.getOrNull()
-            else -> runCatching { info.loadIcon(context.packageManager) }.getOrNull()
+        var icon: Drawable? = null
+
+        // 1. 最高优先级：如果选择了第三方图标包，优先从中加载
+        if (iconPack.isNotEmpty()) {
+            icon = loadFromIconPack(context.packageManager, info, iconPack)
+        }
+
+        // 2. 第二优先级：如果图标包中未找到（或未选择图标包），且开启了自动绘制，则生成线条图标
+        if (icon == null && autoLineIcons) {
+            icon = loadLineIcon(context, info)
+        }
+
+        // 3. 兜底逻辑：如果都没有，则加载系统原始图标
+        if (icon == null) {
+            icon = runCatching { info.loadIcon(context.packageManager) }.getOrNull()
         }
 
         if (icon != null) cachePut(key, icon)
