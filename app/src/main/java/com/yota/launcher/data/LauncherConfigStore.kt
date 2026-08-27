@@ -24,7 +24,8 @@ class LauncherConfigStore(context: Context) {
             screenOnAnimationStyle = prefs.getInt("screen_on_animation_style", 2),
             screenOffAnimation = prefs.getBoolean("screen_off_animation", true),
             screenOffAnimationStyle = prefs.getInt("screen_off_animation_style", 3),
-            autoApplyEpdParams = prefs.getBoolean("auto_apply_epd_params", true)
+            autoApplyEpdParams = prefs.getBoolean("auto_apply_epd_params", true),
+            iconSize = prefs.getInt("icon_size", 44)
         )
     }
 
@@ -75,6 +76,7 @@ class LauncherConfigStore(context: Context) {
             .putBoolean("screen_off_animation", config.screenOffAnimation)
             .putInt("screen_off_animation_style", config.screenOffAnimationStyle)
             .putBoolean("auto_apply_epd_params", config.autoApplyEpdParams)
+            .putInt("icon_size", config.iconSize)
             .apply()
     }
 

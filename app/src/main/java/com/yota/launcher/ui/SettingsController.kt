@@ -44,6 +44,7 @@ class SettingsController(
     private lateinit var recentWindowValue: TextView
     private lateinit var recentCancelValue: TextView
     private lateinit var iconPackValue: TextView
+    private lateinit var iconSizeValue: TextView // 新增
     private lateinit var lineIconsValue: TextView
     private lateinit var refreshModeValue: TextView
     private lateinit var pageAnimationValue: TextView
@@ -80,6 +81,7 @@ class SettingsController(
         recentWindowValue = activity.findViewById(R.id.settingsRecentWindowValue)
         recentCancelValue = activity.findViewById(R.id.settingsRecentCancelValue)
         iconPackValue = activity.findViewById(R.id.settingsIconPackValue)
+        iconSizeValue = activity.findViewById(R.id.settingsIconSizeValue) // 新增
         lineIconsValue = activity.findViewById(R.id.settingsLineIconsValue)
         refreshModeValue = activity.findViewById(R.id.settingsRefreshModeValue)
         pageAnimationValue = activity.findViewById(R.id.settingsPageAnimationValue)
@@ -160,7 +162,7 @@ class SettingsController(
             val cfg = currentConfig()
             val packs = IconLoader.findIconPacks(activity.packageManager)
             val options = listOf(activity.getString(R.string.icon_pack_default)) +
-                packs.map { it.label }
+                    packs.map { it.label }
             val selected = packs.indexOfFirst { it.packageName == cfg.iconPack }.let { if (it >= 0) it + 1 else 0 }
             showSelector(
                 activity.getString(R.string.settings_icon_pack), options, selected
@@ -169,6 +171,20 @@ class SettingsController(
                 onConfigChanged(currentConfig().copy(iconPack = chosen), AFFECT_ICONS)
             }
         }
+
+        // 新增：调整图标大小
+        activity.findViewById<View>(R.id.rowIconSize).setOnClickListener {
+            val cfg = currentConfig()
+            val options = intArrayOf(36, 40, 44, 48, 52, 56, 60)
+            val labels = options.map { "$it dp" }
+            showSelector(
+                "图标大小", labels,
+                options.indexOf(cfg.iconSize).coerceAtLeast(0)
+            ) { index ->
+                onConfigChanged(currentConfig().copy(iconSize = options[index]), AFFECT_APPS or AFFECT_HOME)
+            }
+        }
+
         activity.findViewById<View>(R.id.rowLineIcons).setOnClickListener {
             val cfg = currentConfig()
             onConfigChanged(cfg.copy(autoLineIcons = !cfg.autoLineIcons), AFFECT_ICONS)
@@ -289,6 +305,7 @@ class SettingsController(
             else R.string.recent_cancel_back_to_home
         )
         iconPackValue.text = iconPackLabel(config.iconPack)
+        iconSizeValue.text = "${config.iconSize} dp" // 新增：显示当前图标大小
         lineIconsValue.text = activity.getString(if (config.autoLineIcons) R.string.divider_on else R.string.divider_off)
         refreshModeValue.text = activity.getString(
             when (config.refreshMode) {

@@ -50,6 +50,7 @@ class EInkLauncherView @JvmOverloads constructor(
 
     private var columns = 4
     private var rows = 5
+    private var iconSizeDp = 44 // 新增：保存图标大小
     private var apps: List<ResolveInfo?> = emptyList()
     private var selection: Set<String> = emptySet()
     private var hiddenApps: Set<String> = emptySet()
@@ -74,9 +75,11 @@ class EInkLauncherView @JvmOverloads constructor(
         setWillNotDraw(false)
     }
 
-    fun configure(columns: Int, rows: Int) {
+    // 新增：加入图标大小参数
+    fun configure(columns: Int, rows: Int, iconSizeDp: Int = 44) {
         this.columns = columns.coerceIn(2, 6)
         this.rows = rows.coerceIn(1, 7)
+        this.iconSizeDp = iconSizeDp
     }
 
     fun setApps(
@@ -135,6 +138,8 @@ class EInkLauncherView @JvmOverloads constructor(
      */
     private fun resetGrid() {
         val targetCount = columns * rows
+        val iconPx = (iconSizeDp * context.resources.displayMetrics.density).toInt() // 计算对应像素大小
+
         if (holders.size != targetCount) {
             removeAllViews()
             holders.clear()
@@ -144,6 +149,17 @@ class EInkLauncherView @JvmOverloads constructor(
                 itemView.isHapticFeedbackEnabled = false
                 addView(itemView)
                 holders.add(ItemViewHolder(itemView))
+            }
+        }
+
+        // 确保现有的每一个 holder 里的 icon 尺寸按照设定的 iconSizeDp 显示
+        for (holder in holders) {
+            val icon = holder.icon
+            if (icon.layoutParams.width != iconPx || icon.layoutParams.height != iconPx) {
+                icon.layoutParams = icon.layoutParams.apply {
+                    width = iconPx
+                    height = iconPx
+                }
             }
         }
         rebind()
@@ -322,7 +338,7 @@ class EInkLauncherView @JvmOverloads constructor(
                     }
                     android.util.Log.d("EInkLauncherView",
                         "swipe: dx=$dx dy=$dy threshold=$swipeThreshold -> " +
-                        "$axis ${if (next) "onNextPage" else "onPrevPage"}")
+                                "$axis ${if (next) "onNextPage" else "onPrevPage"}")
                     if (next) pageListener?.onNextPage() else pageListener?.onPrevPage()
                     return true
                 } else {
