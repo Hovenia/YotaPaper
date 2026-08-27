@@ -60,6 +60,7 @@ class EpdManagerActivity : Activity() {
 
     private val appInfoCache = HashMap<String, AppInfo>()
     private val activitiesCache = HashMap<String, List<String>>()
+    private var allPackages: List<String> = emptyList()
 
     private var pendingExportJson: String? = null
     private val requestExport = 101
@@ -121,16 +122,6 @@ class EpdManagerActivity : Activity() {
             bottomMargin = dp(10)
         })
 
-        val hintText = TextView(this).apply {
-            text = "本地持久化保存，启动 Launcher 时自动应用到系统 Provider。系统不支持硬删除，「删除」= 改写为占位符。"
-            setTextColor(color(R.color.gray))
-            textSize = 10f
-            setLineSpacing(0f, 1.1f)
-        }
-        root.addView(hintText, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            bottomMargin = dp(10)
-        })
-
         autoApplySwitch = paperButton("") { toggleAutoApply() }
         updateAutoApplySwitch()
         root.addView(autoApplySwitch, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply {
@@ -166,6 +157,7 @@ class EpdManagerActivity : Activity() {
         }
         selRow.addView(paperButton("设流畅") { confirmSelection("设为流畅") { e -> e.copy(mode = 1) } }, topButtonLp())
         selRow.addView(paperButton("设高画质") { confirmSelection("设为高画质") { e -> e.copy(mode = 0) } }, topButtonLp())
+        selRow.addView(paperButton("设动画") { confirmSelection("设为动画") { e -> e.copy(mode = 2) } }, topButtonLp())
         selRow.addView(paperButton("重置默认") { confirmSelection("重置默认") {
             EpdEntry(it.activity, 0, 10, 2, 70, 255, 0)
         } }, topButtonLp())
@@ -282,7 +274,11 @@ class EpdManagerActivity : Activity() {
     private fun loadData() {
         Thread {
             val list = EpdParamsStore.load(this)
-            list.map { pkgOf(it.activity) }.distinct().forEach { pkg ->
+            if (allPackages.isEmpty()) {
+                allPackages = loadAllPackages()
+            }
+            val configuredPkgs = list.map { pkgOf(it.activity) }.distinct()
+            (allPackages + configuredPkgs).distinct().forEach { pkg ->
                 if (pkg.isNotBlank() && !appInfoCache.containsKey(pkg)) {
                     appInfoCache[pkg] = loadAppInfo(pkg)
                 }
@@ -297,6 +293,12 @@ class EpdManagerActivity : Activity() {
                 render()
             }
         }.start()
+    }
+
+    private fun loadAllPackages(): List<String> {
+        return runCatching {
+            packageManager.getInstalledApplications(0).map { it.packageName }.distinct()
+        }.getOrElse { emptyList() }
     }
 
     private fun loadAppInfo(pkg: String): AppInfo {
@@ -325,6 +327,7 @@ class EpdManagerActivity : Activity() {
         container.removeAllViews()
         val pkg = currentPkg
         updateAutoApplySwitch()
+        autoApplySwitch.visibility = if (pkg == null) View.VISIBLE else View.GONE
         exportButton.visibility = if (pkg == null) View.VISIBLE else View.GONE
         importButton.visibility = if (pkg == null) View.VISIBLE else View.GONE
         multiSelectButton.text = if (selectionMode) "退出多选" else "多选"
@@ -347,14 +350,19 @@ class EpdManagerActivity : Activity() {
 
         val q = searchQuery.trim().lowercase(Locale.getDefault())
         val grouped = entries.groupBy { pkgOf(it.activity) }
-        val packages = grouped.keys
+        val configuredPkgs = grouped.keys.toSet()
+        val merged = (allPackages + configuredPkgs).distinct()
             .filter { pkg -> matchesAppFilter(pkg, q) }
-            .sortedBy { pkg -> appInfoCache[pkg]?.label?.lowercase(Locale.getDefault()) ?: pkg }
+        val (configured, unconfigured) = merged.partition { it in configuredPkgs }
+        val byLabel: (String) -> String = { pkg ->
+            appInfoCache[pkg]?.label?.lowercase(Locale.getDefault()) ?: pkg
+        }
+        val packages = configured.sortedBy(byLabel) + unconfigured.sortedBy(byLabel)
 
-        statusText.text = "共 ${packages.size} 个应用，${entries.size} 条本地配置"
+        statusText.text = "已设置 ${configuredPkgs.size} 个应用，共显示 ${packages.size} 个应用（${entries.size} 条本地配置）"
 
         if (packages.isEmpty()) {
-            container.addView(emptyView(if (entries.isEmpty()) "暂无本地配置，点应用内未设置项即可新增" else "没有匹配的应用"),
+            container.addView(emptyView("没有匹配的应用"),
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(120))
             return
         }
@@ -408,7 +416,7 @@ class EpdManagerActivity : Activity() {
             typeface = Typeface.MONOSPACE
         })
         textCol.addView(TextView(this).apply {
-            text = "$configuredCount 项已设置"
+            text = if (configuredCount > 0) "$configuredCount 项已设置" else "未设置"
             setTextColor(color(R.color.gray))
             textSize = 10f
         })
@@ -527,11 +535,11 @@ class EpdManagerActivity : Activity() {
 
         val summary = TextView(this).apply {
             if (entry != null) {
-                text = if (entry.mode == 1) {
-                    "流畅   对比=${entry.contrast}  锐化=${entry.sharping}  " +
-                        "黑伸=${entry.blackStretch}  白伸=${entry.whiteStretch}  亮度=${entry.bright}"
-                } else {
+                text = if (entry.mode == 0) {
                     "高画质（具体参数不生效）"
+                } else {
+                    "${entry.modeLabel}   对比=${entry.contrast}  锐化=${entry.sharping}  " +
+                        "黑伸=${entry.blackStretch}  白伸=${entry.whiteStretch}  亮度=${entry.bright}"
                 }
                 setTextColor(color(R.color.gray))
             } else {
@@ -680,8 +688,16 @@ class EpdManagerActivity : Activity() {
                     EpdParamsStore.softDeleteInProvider(this, e.activity)
                     newList.removeAll { it.activity == e.activity }
                     true
+                } else if (t.mode == 2) {
+                    // 动画：先占位符化删除系统 Provider 行，再只写本地。
+                    EpdParamsStore.softDeleteInProvider(this, e.activity)
+                    newList.replaceAll { if (it.activity == e.activity) t else it }
+                    true
                 } else {
-                    if (EpdParamsStore.updateInProvider(this, e.activity, t)) {
+                    if (t.activity != e.activity) {
+                        EpdParamsStore.softDeleteInProvider(this, e.activity)
+                    }
+                    if (EpdParamsStore.applyToProvider(this, t)) {
                         newList.replaceAll { if (it.activity == e.activity) t else it }
                         true
                     } else false
@@ -828,22 +844,36 @@ class EpdManagerActivity : Activity() {
         val modeGroup = RadioGroup(this).apply {
             orientation = RadioGroup.HORIZONTAL
             addView(RadioButton(this@EpdManagerActivity).apply {
-                text = "高画质(mode=0)"
+                text = "高画质"
                 id = 1
                 textSize = 13f
+                gravity = Gravity.CENTER
                 setTextColor(color(R.color.ink))
-                setPadding(dp(4), dp(6), dp(12), dp(6))
-            })
+                setPadding(dp(2), dp(6), dp(2), dp(6))
+            }, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(RadioButton(this@EpdManagerActivity).apply {
-                text = "流畅(mode=1)"
+                text = "流畅"
                 id = 2
                 textSize = 13f
+                gravity = Gravity.CENTER
                 setTextColor(color(R.color.ink))
-                setPadding(dp(4), dp(6), dp(12), dp(6))
-            })
-            if (entry.mode == 1) check(2) else check(1)
+                setPadding(dp(2), dp(6), dp(2), dp(6))
+            }, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(RadioButton(this@EpdManagerActivity).apply {
+                text = "动画"
+                id = 3
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setTextColor(color(R.color.ink))
+                setPadding(dp(2), dp(6), dp(2), dp(6))
+            }, RadioGroup.LayoutParams(0, RadioGroup.LayoutParams.WRAP_CONTENT, 1f))
+            when (entry.mode) {
+                1 -> check(2)
+                2 -> check(3)
+                else -> check(1)
+            }
         }
-        content.addView(modeGroup)
+        content.addView(modeGroup, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
 
         data class Stepper(
             val name: String,
@@ -868,12 +898,19 @@ class EpdManagerActivity : Activity() {
             }
         }
 
-        val steppers = listOf(
+        val imageSteppers = listOf(
             Stepper("对比度", 0, 32, entry.contrast, numberEdit(entry.contrast)),
             Stepper("锐化", 0, 16, entry.sharping, numberEdit(entry.sharping)),
             Stepper("黑拉伸", 0, 125, entry.blackStretch, numberEdit(entry.blackStretch)),
             Stepper("白拉伸", 0, 255, entry.whiteStretch, numberEdit(entry.whiteStretch)),
             Stepper("亮度", 0, 125, entry.bright, numberEdit(entry.bright))
+        )
+
+        val animWindowMsInit = EpdParamsStore.loadAnimWindowMs(this)
+        val animFrameCountInit = EpdParamsStore.loadAnimFrameCount(this)
+        val animSteppers = listOf(
+            Stepper("注入有效窗口(ms)", 200, 3000, animWindowMsInit, numberEdit(animWindowMsInit)),
+            Stepper("动画帧数", 3, 60, animFrameCountInit, numberEdit(animFrameCountInit))
         )
 
         fun readValue(s: Stepper): Int = s.valueEdit.text.toString().trim().toIntOrNull() ?: s.value
@@ -896,11 +933,7 @@ class EpdManagerActivity : Activity() {
             })
         }
 
-        val paramsContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = if (entry.mode == 1) View.VISIBLE else View.GONE
-        }
-        for (s in steppers) {
+        fun addStepperRow(container: LinearLayout, s: Stepper) {
             attachWatcher(s)
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -911,7 +944,7 @@ class EpdManagerActivity : Activity() {
                 text = "${s.name} ${s.min}–${s.max}"
                 textSize = 12f
                 setTextColor(color(R.color.ink))
-            }, LinearLayout.LayoutParams(dp(96), LinearLayout.LayoutParams.WRAP_CONTENT))
+            }, LinearLayout.LayoutParams(dp(112), LinearLayout.LayoutParams.WRAP_CONTENT))
             row.addView(paperButton("−") {
                 s.value = (readValue(s) - 1).coerceAtLeast(s.min)
                 refresh(s)
@@ -921,12 +954,26 @@ class EpdManagerActivity : Activity() {
                 s.value = (readValue(s) + 1).coerceAtMost(s.max)
                 refresh(s)
             }, LinearLayout.LayoutParams(dp(44), dp(44)))
-            paramsContainer.addView(row)
+            container.addView(row)
         }
-        content.addView(paramsContainer)
+
+        val imageParamsContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (entry.mode == 1) View.VISIBLE else View.GONE
+        }
+        imageSteppers.forEach { addStepperRow(imageParamsContainer, it) }
+        content.addView(imageParamsContainer)
+
+        val animParamsContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (entry.mode == 2) View.VISIBLE else View.GONE
+        }
+        animSteppers.forEach { addStepperRow(animParamsContainer, it) }
+        content.addView(animParamsContainer)
 
         modeGroup.setOnCheckedChangeListener { _, checkedId ->
-            paramsContainer.visibility = if (checkedId == 2) View.VISIBLE else View.GONE
+            imageParamsContainer.visibility = if (checkedId == 2) View.VISIBLE else View.GONE
+            animParamsContainer.visibility = if (checkedId == 3) View.VISIBLE else View.GONE
         }
 
         val scroll = ScrollView(this).apply { addView(content) }
@@ -940,20 +987,35 @@ class EpdManagerActivity : Activity() {
                     toast("activity 不能为空")
                     return@setPositiveButton
                 }
+                val selectedMode = when (modeGroup.checkedRadioButtonId) {
+                    2 -> 1
+                    3 -> 2
+                    else -> 0
+                }
                 val newEntry = entry.copy(
                     activity = activity,
-                    mode = if (modeGroup.checkedRadioButtonId == 2) 1 else 0,
-                    contrast = readValue(steppers[0]).coerceIn(steppers[0].min, steppers[0].max),
-                    sharping = readValue(steppers[1]).coerceIn(steppers[1].min, steppers[1].max),
-                    blackStretch = readValue(steppers[2]).coerceIn(steppers[2].min, steppers[2].max),
-                    whiteStretch = readValue(steppers[3]).coerceIn(steppers[3].min, steppers[3].max),
-                    bright = readValue(steppers[4]).coerceIn(steppers[4].min, steppers[4].max)
+                    mode = selectedMode,
+                    contrast = if (selectedMode == 1) readValue(imageSteppers[0]).coerceIn(imageSteppers[0].min, imageSteppers[0].max) else entry.contrast,
+                    sharping = if (selectedMode == 1) readValue(imageSteppers[1]).coerceIn(imageSteppers[1].min, imageSteppers[1].max) else entry.sharping,
+                    blackStretch = if (selectedMode == 1) readValue(imageSteppers[2]).coerceIn(imageSteppers[2].min, imageSteppers[2].max) else entry.blackStretch,
+                    whiteStretch = if (selectedMode == 1) readValue(imageSteppers[3]).coerceIn(imageSteppers[3].min, imageSteppers[3].max) else entry.whiteStretch,
+                    bright = if (selectedMode == 1) readValue(imageSteppers[4]).coerceIn(imageSteppers[4].min, imageSteppers[4].max) else entry.bright
                 )
+                val animWindowMs = readValue(animSteppers[0]).coerceIn(animSteppers[0].min, animSteppers[0].max)
+                val animFrameCount = readValue(animSteppers[1]).coerceIn(animSteppers[1].min, animSteppers[1].max)
                 Thread {
-                    val ok = if (isEdit && oldActivity != null) {
-                        EpdParamsStore.updateInProvider(this, oldActivity, newEntry)
+                    val ok: Boolean
+                    if (selectedMode == 2) {
+                        // 动画模式：先占位符化删除系统 Provider 行，再只写本地供 Xposed 读取。
+                        val old = if (isEdit && oldActivity != null) oldActivity else newEntry.activity
+                        EpdParamsStore.softDeleteInProvider(this, old)
+                        ok = true
                     } else {
-                        EpdParamsStore.applyToProvider(this, newEntry)
+                        // 高画质 / 流畅：写系统 Provider。编辑改 activity 时先逻辑删除旧行。
+                        if (isEdit && oldActivity != null && oldActivity != newEntry.activity) {
+                            EpdParamsStore.softDeleteInProvider(this, oldActivity)
+                        }
+                        ok = EpdParamsStore.applyToProvider(this, newEntry)
                     }
                     if (ok) {
                         val newList = entries.toMutableList()
@@ -963,6 +1025,9 @@ class EpdManagerActivity : Activity() {
                         newList.removeAll { it.activity == newEntry.activity }
                         newList.add(newEntry)
                         EpdParamsStore.save(this, newList)
+                        if (selectedMode == 2) {
+                            EpdParamsStore.saveAnimParams(this, animWindowMs, animFrameCount)
+                        }
                     }
                     runOnUiThread {
                         toast(if (ok) "已保存" else "保存失败")

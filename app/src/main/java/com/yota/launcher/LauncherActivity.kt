@@ -238,6 +238,7 @@ class LauncherActivity : Activity() {
             YotaSdkAdapter.optOutOfSystemEpdParamsAsync(this) {
                 if (!isFinishing) applyRefreshMode(config)
             }
+            EpdParamsStore.ensurePrefsReadable(this)
             startupSyncEpdParams()
             contentResolver.registerContentObserver(
                 Uri.parse(EpdParamsStore.URI), true, epdProviderObserver

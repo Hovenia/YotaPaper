@@ -7,6 +7,7 @@ import android.net.Uri
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 data class EpdEntry(
     var activity: String,
@@ -17,7 +18,11 @@ data class EpdEntry(
     var whiteStretch: Int,
     var bright: Int
 ) {
-    val modeLabel: String get() = if (mode == 1) "流畅" else "高画质"
+    val modeLabel: String get() = when (mode) {
+        1 -> "流畅"
+        2 -> "动画"
+        else -> "高画质"
+    }
 
     /** 占位符行不匹配任何真实窗口标题，也不应出现在本地保存列表中。 */
     val isNeutralized: Boolean
@@ -63,11 +68,17 @@ object EpdParamsStore {
     private const val PREFS = "yota_paper_epd_params"
     private const val KEY_ITEMS = "items"
 
+    const val KEY_ANIM_ENABLE = "anim_enable"
+    const val KEY_ANIM_WINDOW_MS = "anim_window_ms"
+    const val KEY_ANIM_FRAME_COUNT = "anim_frame_count"
+    const val KEY_DEBUG_LOG = "debug_log"
+
     const val AUTHORITY = "com.baoliyota.epdparams.paramsprovider"
     const val URI = "content://$AUTHORITY/params"
     const val DELETED_PLACEHOLDER = "__deleted_entry__"
 
     fun load(context: Context): List<EpdEntry> {
+        ensurePrefsReadable(context)
         val text = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_ITEMS, "[]") ?: "[]"
         return runCatching {
@@ -90,12 +101,53 @@ object EpdParamsStore {
             .distinctBy { it.activity }
             .forEach { arr.put(it.toJson()) }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_ITEMS, arr.toString()).apply()
+            .edit()
+            .putString(KEY_ITEMS, arr.toString())
+            .apply()
+        ensurePrefsReadable(context)
     }
 
-    /** 新增或按 activity 更新系统 Provider 中的一行。 */
+    fun ensurePrefsReadable(context: Context) {
+        runCatching {
+            val dataDir = context.filesDir?.parentFile ?: return
+            dataDir.setExecutable(true, false)
+            dataDir.setReadable(true, false)
+            val spDir = File(dataDir, "shared_prefs")
+            spDir.setExecutable(true, false)
+            spDir.setReadable(true, false)
+            File(spDir, "$PREFS.xml").setReadable(true, false)
+        }.onFailure { ex -> Log.w(TAG, "ensurePrefsReadable failed: ${ex.message}") }
+    }
+
+    fun loadAnimWindowMs(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_ANIM_WINDOW_MS, 1200)
+
+    fun loadAnimFrameCount(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_ANIM_FRAME_COUNT, 15)
+
+    fun saveAnimParams(context: Context, windowMs: Int, frameCount: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_ANIM_WINDOW_MS, windowMs)
+            .putInt(KEY_ANIM_FRAME_COUNT, frameCount)
+            .putBoolean(KEY_ANIM_ENABLE, true)
+            .putBoolean(KEY_DEBUG_LOG, true)
+            .apply()
+        ensurePrefsReadable(context)
+    }
+
+    /**
+     * 新增或按 activity 更新系统 Provider 中的一行。
+     * 动画模式（mode=2）不写入系统 Provider：先占位符化逻辑删除，
+     * 配置只保存在本地供 Xposed 模块读取。
+     */
     fun applyToProvider(context: Context, e: EpdEntry): Boolean {
         if (e.activity.isBlank() || e.isNeutralized) return false
+        if (e.mode == 2) {
+            return softDeleteInProvider(context, e.activity)
+        }
         return runCatching {
             val resolver = context.contentResolver
             val uri = Uri.parse(URI)
@@ -116,6 +168,9 @@ object EpdParamsStore {
     /** 按旧 activity 定位更新（编辑时可能改动 activity）。 */
     fun updateInProvider(context: Context, oldActivity: String, e: EpdEntry): Boolean {
         if (e.activity.isBlank() || e.isNeutralized) return false
+        if (e.mode == 2) {
+            return softDeleteInProvider(context, oldActivity)
+        }
         return runCatching {
             context.contentResolver.update(
                 Uri.parse(URI), contentValues(e), "activity=?", arrayOf(oldActivity)
@@ -171,13 +226,17 @@ object EpdParamsStore {
         Log.i(TAG, "mergeFromProvider: merged ${providerEntries.size} provider rows into local store")
     }
 
-    /** 启动时把全部已保存条目写入系统 Provider。 */
+    /** 启动时把全部已保存条目同步到系统 Provider（动画条目只做占位符化删除，不写入）。 */
     fun applySavedToSystem(context: Context, skipActivity: String? = null) {
         val items = load(context)
         var ok = 0
         for (e in items) {
             if (skipActivity != null && e.activity == skipActivity) continue
-            if (applyToProvider(context, e)) ok++
+            if (e.mode == 2) {
+                if (softDeleteInProvider(context, e.activity)) ok++
+            } else {
+                if (applyToProvider(context, e)) ok++
+            }
         }
         Log.i(TAG, "applySavedToSystem: ${ok}/${items.size} applied")
     }

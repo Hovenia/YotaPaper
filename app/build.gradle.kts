@@ -11,8 +11,8 @@ android {
         applicationId = "com.yota.launcher"
         minSdk = 17
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3"
+        versionCode = 4
+        versionName = "0.4"
     }
 
     signingConfigs {
@@ -53,6 +53,9 @@ android {
 dependencies {
     // Yota SDK is a compile-time API stub; actual implementation exists on Yota devices.
     compileOnly(files("../libs/yotadevice_sdk-full-stub.jar"))
+
+    // Xposed API 编译期桩，只在被 Xposed 加载时使用；不打包进 APK。
+    compileOnly(files("../libs/XposedBridgeApi-stub.jar"))
 
     // QR code generation for the WiFi transfer feature.
     implementation(files("../libs/zxing-core-3.5.1.jar"))

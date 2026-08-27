@@ -30,6 +30,16 @@
             android:name="com.yotadevices.sdk"
             android:required="false" />
 
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="YotaPaper 桌面集成：为 EPD 参数管理中设为「动画」的 Activity 注入 Yota 横翻动画（点击左右侧触发）。" />
+        <meta-data
+            android:name="xposedminversion"
+            android:value="82" />
+
         <activity
             android:name=".LauncherActivity"
             android:exported="true"
