@@ -1,38 +1,45 @@
 package com.yota.launcher.utils
 
-import java.io.DataOutputStream
+import android.util.Log
+import com.topjohnwu.superuser.Shell
 
 object RootUtil {
+
+    // 在工具类加载时配置全局 Shell
+    init {
+        Shell.setDefaultBuilder(
+            Shell.Builder.create()
+                .setFlags(Shell.FLAG_REDIRECT_STDERR)
+                .setTimeout(10)
+        )
+    }
 
     fun forceStopPackage(packageName: String): Boolean {
         return forceStopPackages(listOf(packageName))
     }
 
     /**
-     * 使用单次 Root 会话批量强行停止多个应用，大幅提升执行速度
+     * 使用 Libsu 全局长连接 Root Shell 批量强行停止应用。
      */
     fun forceStopPackages(packageNames: List<String>): Boolean {
         if (packageNames.isEmpty()) return true
-        var os: DataOutputStream? = null
-        try {
-            val process = Runtime.getRuntime().exec("su")
-            os = DataOutputStream(process.outputStream)
-            for (pkg in packageNames) {
-                os.writeBytes("am force-stop $pkg\n")
-            }
-            os.writeBytes("exit\n")
-            os.flush()
-            val exitValue = process.waitFor()
-            return exitValue == 0
+
+        // 【关键修复】显式获取 Shell 并强制检查是否为 Root。
+        // 这一步会强制阻塞并唤起 Magisk 授权弹窗。
+        val shell = Shell.getShell()
+        if (!shell.isRoot) {
+            Log.e("RootUtil", "Root permission denied or not available.")
+            return false // 用户拒绝，或者被 KernelSU 静默拒绝
+        }
+
+        val commands = packageNames.map { "am force-stop $it" }.toTypedArray()
+
+        return try {
+            val result = Shell.cmd(*commands).exec()
+            result.isSuccess
         } catch (e: Exception) {
             e.printStackTrace()
-            return false
-        } finally {
-            try {
-                os?.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            false
         }
     }
 }

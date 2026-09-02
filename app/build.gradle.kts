@@ -59,4 +59,6 @@ dependencies {
 
     // QR code generation for the WiFi transfer feature.
     implementation(files("../libs/zxing-core-3.5.1.jar"))
+    // 新增 Libsu 依赖：用于维护全局长连接的 Root Shell
+    implementation("com.github.topjohnwu.libsu:core:5.2.2")
 }

@@ -86,9 +86,19 @@ class LauncherConfigStore(context: Context) {
         prefs.edit().clear().apply()
     }
 
+    // --- 全局清理时间戳 ---
     fun markRecentCleared() {
         prefs.edit().putLong("recent_cleared_at", System.currentTimeMillis()).apply()
     }
 
     fun recentClearedAt(): Long = prefs.getLong("recent_cleared_at", 0L)
+
+    // --- 新增：单个 App 的清理时间戳 ---
+    fun markAppCleared(packageName: String) {
+        prefs.edit().putLong("recent_cleared_$packageName", System.currentTimeMillis()).apply()
+    }
+
+    fun appClearedAt(packageName: String): Long {
+        return prefs.getLong("recent_cleared_$packageName", 0L)
+    }
 }

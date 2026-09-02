@@ -148,9 +148,6 @@ class LauncherActivity : Activity() {
     private var lastHomeIntentTime = 0L
     private var lastHomeClickTime = 0L
 
-    // 用于保存本次点开最近任务后单独清理掉的应用包名，UI 会即刻隐藏它们
-    private val manuallyClearedApps = mutableSetOf<String>()
-
     // Info overlay
     private lateinit var infoOverlay: View
     private lateinit var infoTitle: TextView
@@ -430,7 +427,6 @@ class LauncherActivity : Activity() {
 
     private fun maybePlayScreenOnAnimation() {
         val now = System.currentTimeMillis()
-        // 增加 1000 毫秒的防抖锁，避免强杀后台等导致的任务栈变动频繁触发全屏刷新
         if (now - lastScreenOnAnimTime < 1000L) return
 
         if (!yotaDevice) {
@@ -996,6 +992,7 @@ class LauncherActivity : Activity() {
         }
         recentCancel.setOnClickListener {
             hideRecentTasks()
+            // 如果 previousApp 被单清置空了，这里 let 就不会执行，自然就安全留在桌面
             if (config.recentCancelBackToApp) {
                 previousApp?.let { launchApp(it) }
             }
@@ -1017,6 +1014,9 @@ class LauncherActivity : Activity() {
                     Thread {
                         val success = RootUtil.forceStopPackage(pkg)
                         runOnUiThread {
+                            // 【修复 2】检查面板是否已关闭或 Activity 是否销毁
+                            if (isFinishing || recentOverlay.visibility != View.VISIBLE) return@runOnUiThread
+
                             if (success) {
                                 toast("已停止: $label")
                                 removeAppFromRecentUI(pkg)
@@ -1039,7 +1039,12 @@ class LauncherActivity : Activity() {
     }
 
     private fun removeAppFromRecentUI(pkg: String) {
-        manuallyClearedApps.add(pkg)
+        // 【修复 1】如果被杀掉的应用刚好是“上一应用”，立刻置空，防止取消时诈尸
+        if (previousApp?.activityInfo?.packageName == pkg) {
+            previousApp = null
+        }
+
+        store.markAppCleared(pkg)
         val remaining = currentRecentApps()
         if (remaining.isEmpty()) {
             hideRecentTasks()
@@ -1047,6 +1052,8 @@ class LauncherActivity : Activity() {
             populateRecentGrid()
         }
     }
+
+
 
     // ------------------------------------------------------------------ Info overlay
 
@@ -1285,7 +1292,6 @@ class LauncherActivity : Activity() {
 
         if (config.rootClear) {
             Thread {
-                // 修复：提取包名集合，并传递给批量强杀接口
                 val pkgs = apps.map { it.activityInfo.packageName }.filter { it != packageName }
                 if (pkgs.isNotEmpty()) {
                     val success = RootUtil.forceStopPackages(pkgs)
@@ -1342,9 +1348,13 @@ class LauncherActivity : Activity() {
             if (stat.lastTimeUsed <= 0) continue
             if (stat.lastTimeUsed <= clearedAt) continue
             if (since > 0L && stat.lastTimeUsed < since) continue
+
             val pkg = stat.packageName
             if (pkg == packageName) continue
-            if (manuallyClearedApps.contains(pkg)) continue
+
+            // 核心修复：根据独立的单个 App 时间戳过滤历史记录
+            if (stat.lastTimeUsed <= store.appClearedAt(pkg)) continue
+
             val launchIntent = packageManager.getLaunchIntentForPackage(pkg) ?: continue
             val info = runCatching { packageManager.resolveActivity(launchIntent, 0) }.getOrNull()
                 ?: continue
@@ -1374,7 +1384,6 @@ class LauncherActivity : Activity() {
 
     private fun hideRecentTasks() {
         recentOverlay.visibility = View.GONE
-        manuallyClearedApps.clear()
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
