@@ -42,6 +42,7 @@
     <string name="settings_reset">恢复默认</string>
     <string name="settings_recent_recent_only">最近任务仅显示近期使用</string>
     <string name="settings_recent_cancel">最近任务取消行为</string>
+    <string name="settings_recent_root_clear">使用 Root 彻底清理后台</string>
     <string name="settings_help">使用说明</string>
     <string name="settings_about">关于</string>
     <string name="settings_epd_manager">EPD 刷新参数管理</string>

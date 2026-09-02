@@ -1,6 +1,7 @@
 package com.yota.launcher
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.app.AppOpsManager
 import android.app.admin.DevicePolicyManager
@@ -40,6 +41,7 @@ import com.yota.launcher.ui.EInkLauncherView
 import com.yota.launcher.ui.IconLoader
 import com.yota.launcher.ui.SettingsController
 import com.yota.launcher.ui.StatusBarController
+import com.yota.launcher.utils.RootUtil
 import com.yota.launcher.yota.EInkSdk
 import com.yota.launcher.yota.YotaSdkAdapter
 import java.io.File
@@ -91,10 +93,8 @@ class LauncherActivity : Activity() {
     private var appsAll: List<ResolveInfo> = emptyList()
     private var appsPageIndex = 0
     private var appsPageCount = 0
-    private var currentPage = -1 // 记录当前所在主页页面
+    private var currentPage = -1
 
-    // Non-Yota fallback: all EPD SDK features are skipped and the
-    // refresh/animation settings group is hidden.
     private var yotaDevice = false
     private val epdObserverHandler = Handler(Looper.getMainLooper())
     private val epdObserverRunnable = Runnable { syncEpdParamsFromProvider() }
@@ -148,19 +148,22 @@ class LauncherActivity : Activity() {
     private var lastHomeIntentTime = 0L
     private var lastHomeClickTime = 0L
 
-    // Info overlay (help / about)
+    // 用于保存本次点开最近任务后单独清理掉的应用包名，UI 会即刻隐藏它们
+    private val manuallyClearedApps = mutableSetOf<String>()
+
+    // Info overlay
     private lateinit var infoOverlay: View
     private lateinit var infoTitle: TextView
     private lateinit var infoText: TextView
     private lateinit var infoClose: View
 
-    // Selection overlay (settings multi-option rows)
+    // Selection overlay
     private lateinit var selectOverlay: View
     private lateinit var selectTitle: TextView
     private lateinit var selectList: LinearLayout
     private var selectCallback: ((Int) -> Unit)? = null
 
-    // WiFi book transfer overlay
+    // WiFi overlay
     private lateinit var wifiOverlay: View
     private lateinit var wifiQr: ImageView
     private lateinit var wifiUrlText: TextView
@@ -177,30 +180,27 @@ class LauncherActivity : Activity() {
     private lateinit var donationPromptQr: ImageView
     private var donationQrReady = false
 
-    // Settings page is inflated on first open (large XML, lazy)
     private var settingsInflated = false
-
-    // Apps page layout is inflated on first open (small, but keeps main layout minimal)
     private var appsInflated = false
-
-    // Apps grid lazy loading
     private var appsLoaded = false
-
-    // Skip duplicate home refresh on the first onResume after cold start
     private var coldStartResume = true
 
-    // Donation prompt (50 HOME presses)
+    // 开屏动画防抖锁
+    private var lastScreenOnAnimTime = 0L
+
+    // Donation prompt
     private lateinit var donationOverlay: View
     private lateinit var donationClose: TextView
     private var donationCloseEnabled = false
 
-    // About-page switch for the 50-home donation prompt
+    // About-page switch
     private lateinit var rowDonationPrompt: View
     private lateinit var settingsDonationPromptValue: TextView
+
     private val donationCloseRunnable = Runnable {
         donationCloseEnabled = true
         donationClose.text = getString(R.string.info_close)
-        donationClose.setTextColor(getColor(R.color.ink))
+        donationClose.setTextColor(color(R.color.ink))
         donationClose.setOnClickListener { donationOverlay.visibility = View.GONE }
     }
 
@@ -215,7 +215,6 @@ class LauncherActivity : Activity() {
             repository.invalidatePackage(pkg)
             IconLoader.invalidatePackage(pkg)
             refreshHome()
-            // Apps 页如果已经加载过才刷新；没加载的话下次懒加载自然会拿到新列表。
             if (appsLoaded) refreshApps()
         }
     }
@@ -233,8 +232,6 @@ class LauncherActivity : Activity() {
         StartupTracer.stage("store/repo/config")
 
         if (yotaDevice) {
-            // 中和系统刷新管理写入的行必须做，但不要阻塞首帧：放到后台单线程，
-            // 完成后立刻重放一次窗口刷新模式，保证翻页动画不受系统参数覆盖。
             YotaSdkAdapter.optOutOfSystemEpdParamsAsync(this) {
                 if (!isFinishing) applyRefreshMode(config)
             }
@@ -253,7 +250,6 @@ class LauncherActivity : Activity() {
         bindViews()
         StartupTracer.stage("bindViews")
 
-        // 二维码生成约 0.9s：首帧后再在后台生成，绝不阻塞冷启动。
         window.decorView.post { ensureDonationQr() }
         StartupTracer.stage("postDonationQr")
 
@@ -293,8 +289,6 @@ class LauncherActivity : Activity() {
         refreshHome()
         StartupTracer.stage("refreshHome")
 
-        // Apps 页是第二屏：不在冷启动首帧生成 20 个图标。首帧后再加载，
-        // 若用户先点到 apps 页则 selectPage 里会立即加载。
         epdObserverHandler.postDelayed({
             if (!appsLoaded) refreshApps()
         }, 500)
@@ -309,14 +303,12 @@ class LauncherActivity : Activity() {
         statusController.update()
         StartupTracer.stage("clock/status")
 
-        // The cold-start HOME intent counts as the first press.
         lastHomeIntentTime = System.currentTimeMillis()
 
         maybeShowGuide()
         StartupTracer.stage("guide")
     }
 
-    /** 首次使用引导：只显示一次，点击「开始使用」后关闭。 */
     private fun maybeShowGuide() {
         if (store.isGuideShown()) return
         guideOverlay.visibility = View.VISIBLE
@@ -340,7 +332,6 @@ class LauncherActivity : Activity() {
         wifiServer = null
     }
 
-    /** 系统 Provider 变化（例如用户在系统刷新管理里改了某个应用）→ 合并进本地持久化。 */
     private fun syncEpdParamsFromProvider() {
         if (!yotaDevice || !store.autoApplyEpdParamsEnabled()) return
         val launcherComponent = ComponentName(this, LauncherActivity::class.java).toString()
@@ -349,11 +340,9 @@ class LauncherActivity : Activity() {
         }.start()
     }
 
-    /** 启动时：先合并系统 Provider 的手动改动，再应用本地保存的全部条目。 */
     private fun startupSyncEpdParams() {
         if (!yotaDevice || !store.autoApplyEpdParamsEnabled()) return
         val launcherComponent = ComponentName(this, LauncherActivity::class.java).toString()
-        // 延迟到首帧之后再执行，避免冷启动早期与 UI 抢 Provider/IO。
         epdObserverHandler.postDelayed({
             Thread {
                 EpdParamsStore.syncAndApply(this, launcherComponent)
@@ -367,18 +356,12 @@ class LauncherActivity : Activity() {
         handleHomeIntent(intent)
     }
 
-    /**
-     * The only way a launcher can "see" the physical HOME key is through the
-     * HOME intent the system sends to its home activity. Two HOME intents
-     * arriving in a short window are treated as a double press.
-     */
     private fun handleHomeIntent(intent: Intent?) {
         if (intent?.action != Intent.ACTION_MAIN) return
         val isHome = intent.categories?.contains(Intent.CATEGORY_HOME) == true ||
                 intent.categories?.contains(EPD_HOME_CATEGORY) == true
         if (!isHome) return
 
-        // Donation prompt is modal-ish: ignore further HOME presses while it is up.
         if (donationOverlay.visibility == View.VISIBLE) return
 
         val now = System.currentTimeMillis()
@@ -397,7 +380,6 @@ class LauncherActivity : Activity() {
         maybeShowDonationPrompt()
     }
 
-    /** Count HOME presses; every 50 show the donation prompt once (unless disabled in About). */
     private fun maybeShowDonationPrompt() {
         if (!store.isDonationPromptEnabled()) return
         val count = store.incrementHomePressCount()
@@ -412,7 +394,7 @@ class LauncherActivity : Activity() {
         ensureDonationQr()
         donationCloseEnabled = false
         donationClose.text = getString(R.string.donation_close_wait)
-        donationClose.setTextColor(getColor(R.color.gray))
+        donationClose.setTextColor(color(R.color.gray))
         donationClose.setOnClickListener(null)
         donationOverlay.visibility = View.VISIBLE
         window.decorView.postDelayed(donationCloseRunnable, 5000L)
@@ -436,7 +418,6 @@ class LauncherActivity : Activity() {
             refreshApps()
         } else {
             applyRefreshMode(config)
-            // 冷启动首帧前的 onCreate 已刷新过 home；这里只处理“从别的应用回来”的 usage 重排。
             if (!coldStartResume) refreshHome()
         }
         updateClock()
@@ -447,8 +428,11 @@ class LauncherActivity : Activity() {
         StartupTracer.stage("onResume-after-screenAnim")
     }
 
-    /** 开屏动画：按开关与样式，播放一次开屏动画（跟随主模式，仅高画质模式播放）。 */
     private fun maybePlayScreenOnAnimation() {
+        val now = System.currentTimeMillis()
+        // 增加 1000 毫秒的防抖锁，避免强杀后台等导致的任务栈变动频繁触发全屏刷新
+        if (now - lastScreenOnAnimTime < 1000L) return
+
         if (!yotaDevice) {
             Log.d(TAG, "screenOnAnimation: skipped (not a Yota device)")
             return
@@ -460,12 +444,12 @@ class LauncherActivity : Activity() {
         }
         val anim = animationForStyle(config.screenOnAnimationStyle)
         if (anim == EInkSdk.ANIM_OFF) return
+
         Log.d(TAG, "screenOnAnimation: style=${config.screenOnAnimationStyle} anim=$anim")
-        // Arm before the next draw (same pre-rebind timing as page-turn).
+        lastScreenOnAnimTime = now
         EInkSdk.applyScreenAnimation(window.decorView, anim)
     }
 
-    /** 样式编号 1..6 -> EInkSdk 动画预设。 */
     private fun animationForStyle(style: Int): Int = when (style) {
         2 -> EInkSdk.ANIM_HORIZONTAL_OPEN
         3 -> EInkSdk.ANIM_HORIZONTAL_CLOSE
@@ -479,13 +463,10 @@ class LauncherActivity : Activity() {
 
     private fun bindViews() {
         pageHome = findViewById(R.id.pageHome)
-        // pageApps 由 ensureAppsPage()、pageSettings 由 ensureSettingsPage() 懒加载
 
         textTime = findViewById(R.id.textTime)
         textDate = findViewById(R.id.textDate)
         gridHome = findViewById(R.id.gridHome)
-
-        // gridApps / textPage / manageToggle 在 ensureAppsPage() 中绑定
 
         bottomBar = findViewById(R.id.bottomBar)
         infoTime = findViewById(R.id.infoTime)
@@ -542,11 +523,8 @@ class LauncherActivity : Activity() {
         donationOverlay = findViewById(R.id.donationOverlay)
         donationPromptQr = findViewById(R.id.donationPromptQr)
         donationClose = findViewById(R.id.donationClose)
-
-        // rowDonationPrompt / settingsDonationPromptValue 在 ensureSettingsPage() 中懒加载
     }
 
-    /** 生成赞赏二维码并设置到关于/使用说明、首次引导与 50 次 HOME 弹窗。 */
     private fun ensureDonationQr() {
         if (donationQrReady) return
         Thread {
@@ -568,7 +546,6 @@ class LauncherActivity : Activity() {
         }
     }
 
-    /** Apps 页懒加载：inflate page_apps.xml 并绑定网格/管理入口。 */
     private fun ensureAppsPage() {
         if (appsInflated) return
         findViewById<ViewStub>(R.id.pageAppsStub).inflate()
@@ -591,20 +568,19 @@ class LauncherActivity : Activity() {
             }
         })
 
-        // 修改边界滑动的响应，让手势可以切换三大主页
         gridApps.setOnPageChangeListener(object : EInkLauncherView.OnPageChangeListener {
             override fun onNextPage() {
                 if (appsPageIndex < appsPageCount - 1) showAppsPage(appsPageIndex + 1)
-                else selectPage(PAGE_SETTINGS, animate = true) // 最后一页继续左滑去设置
+                else selectPage(PAGE_SETTINGS, animate = true)
             }
             override fun onPrevPage() {
                 if (appsPageIndex > 0) showAppsPage(appsPageIndex - 1)
-                else selectPage(PAGE_HOME, animate = true) // 第一页继续右滑去主页
+                else selectPage(PAGE_HOME, animate = true)
             }
         })
     }
 
-    /** 设置页懒加载：inflate 大块设置布局并建立 SettingsController。 */
+    @SuppressLint("ClickableViewAccessibility")
     private fun ensureSettingsPage() {
         if (settingsInflated) return
         findViewById<ViewStub>(R.id.pageSettingsStub).inflate()
@@ -646,7 +622,6 @@ class LauncherActivity : Activity() {
             updateDonationPromptValue()
         }
 
-        // 给设置页（ScrollView）加上全局手势检测，允许右滑退回到应用网格
         val gestureDetector = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
             private val SWIPE_THRESHOLD = 80
             private val SWIPE_VELOCITY_THRESHOLD = 100
@@ -655,7 +630,7 @@ class LauncherActivity : Activity() {
                 val diffX = e2.x - e1.x
                 val diffY = e2.y - e1.y
                 if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > SWIPE_THRESHOLD && Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
-                    if (diffX > 0) { // 向右滑 (手指从左往右移)，回到应用页
+                    if (diffX > 0) {
                         selectPage(PAGE_APPS, animate = true)
                         return true
                     }
@@ -665,7 +640,7 @@ class LauncherActivity : Activity() {
         })
         pageSettings.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
-            false // 放行，保证原本 ScrollView 的上下滑动不受影响
+            false
         }
     }
 
@@ -701,17 +676,16 @@ class LauncherActivity : Activity() {
             override fun onItemClick(info: ResolveInfo) = launchApp(info)
             override fun onItemLongClick(info: ResolveInfo) = showActionSheet(info)
         })
-        // 主页向左滑进入应用页
         gridHome.setOnPageChangeListener(object : EInkLauncherView.OnPageChangeListener {
             override fun onNextPage() = selectPage(PAGE_APPS, animate = true)
-            override fun onPrevPage() = Unit // 主页已经是第一页，向右滑不做处理
+            override fun onPrevPage() = Unit
         })
     }
 
     private fun refreshHome() {
         val apps = repository.loadApps()
         StartupTracer.stage("refreshHome-loadApps")
-        gridHome.configure(config.homeColumns, config.homeRows, config.iconSize) // 传入图标大小
+        gridHome.configure(config.homeColumns, config.homeRows, config.iconSize)
         val limit = config.homeColumns * config.homeRows
         val sorted = repository.sortHomeApps(apps, limit)
         StartupTracer.stage("refreshHome-sort")
@@ -730,7 +704,7 @@ class LauncherActivity : Activity() {
         appsLoaded = true
         appsAll = if (manageMode) repository.loadAllApps() else repository.loadApps()
         StartupTracer.stage("refreshApps-load")
-        gridApps.configure(config.columns, config.rows, config.iconSize) // 传入图标大小
+        gridApps.configure(config.columns, config.rows, config.iconSize)
         appsPageCount =
             if (appsAll.isEmpty()) 0
             else ceil(appsAll.size.toDouble() / (config.columns * config.rows)).toInt()
@@ -772,11 +746,7 @@ class LauncherActivity : Activity() {
             if (yotaDevice && config.refreshMode == 0) {
                 Log.d(TAG, "showAppsPage: pageChanged $previous -> $clamped delta=$delta type=${config.pageAnimation} anim=$anim")
                 EInkSdk.applyPageTurn(gridApps, anim)
-            } else {
-                Log.d(TAG, "showAppsPage: pageChanged $previous -> $clamped, animation skipped (yotaDevice=$yotaDevice, refreshMode=${config.refreshMode})")
             }
-        } else {
-            Log.d(TAG, "showAppsPage: page unchanged ($clamped), no animation")
         }
     }
 
@@ -800,11 +770,10 @@ class LauncherActivity : Activity() {
             showRecentTasks()
         } else {
             lastHomeClickTime = now
-            selectPage(PAGE_HOME, animate = true) // 改为带动画返回
+            selectPage(PAGE_HOME, animate = true)
         }
     }
 
-    // 重构的跨主页切换及动画逻辑
     private fun selectPage(page: Int, animate: Boolean = false) {
         if (page == currentPage) return
 
@@ -819,7 +788,6 @@ class LauncherActivity : Activity() {
             ensureSettingsPage()
         }
 
-        // 处理跨三大主页的动画，跟随 Yota 高画质模式
         if (animate && previous != -1 && yotaDevice && config.refreshMode == 0) {
             val delta = page - previous
             val anim = when (config.pageAnimation) {
@@ -859,14 +827,12 @@ class LauncherActivity : Activity() {
 
     private fun setupLock() {
         btnLock.setOnClickListener { lockScreen() }
-        // 左下角时间：点击触发一次手动全刷（清除残影）
         infoTime.setOnClickListener { EInkSdk.manualFullRefresh(infoTime) }
     }
 
     // ------------------------------------------------------------------ Manage mode
 
     private fun setupManage() {
-        // manageToggle 的监听在 ensureAppsPage() 中懒加载后绑定
         manageDone.setOnClickListener { exitManageMode() }
         manageHide.setOnClickListener {
             if (manageSelected.isEmpty()) {
@@ -924,10 +890,6 @@ class LauncherActivity : Activity() {
         gridApps.updateSelection(manageSelected)
     }
 
-    /**
-     * 逐个打开系统卸载页：一次只 start 一个，等 onActivityResult 回来再处理下一个，
-     * 避免之前 forEach 连开多个 ACTION_DELETE 只有最后一个生效、其余被丢弃的问题。
-     */
     private fun startNextUninstall() {
         if (uninstallQueue.isEmpty()) {
             exitManageMode()
@@ -986,11 +948,6 @@ class LauncherActivity : Activity() {
 
     // ------------------------------------------------------------------ Recent tasks
 
-    /**
-     * Lock entry point: on Yota devices lock the back EPD screen via the SDK;
-     * on other devices fall back to DevicePolicyManager.lockNow() through our
-     * minimal device admin (force-lock only).
-     */
     private fun lockScreen() {
         if (yotaDevice) {
             if (config.screenOffAnimation && config.refreshMode == 0) {
@@ -998,7 +955,6 @@ class LauncherActivity : Activity() {
                 if (anim != EInkSdk.ANIM_OFF) {
                     Log.d(TAG, "screenOffAnimation: style=${config.screenOffAnimationStyle} anim=$anim")
                     EInkSdk.applyScreenAnimation(window.decorView, anim)
-                    // Let the close animation play, then turn the back screen off.
                     window.decorView.postDelayed({
                         YotaSdkAdapter.lockEpd()
                     }, 700L)
@@ -1032,7 +988,6 @@ class LauncherActivity : Activity() {
     private fun setupRecentOverlay() {
         findViewById<View>(R.id.recentDim).setOnClickListener { hideRecentTasks() }
         recentClear.setOnClickListener {
-            // 先取当前最近任务列表，再清空记录，最后同步清理这些应用的后台进程。
             val appsToKill = currentRecentApps()
             store.markRecentCleared()
             previousApp = null
@@ -1045,15 +1000,52 @@ class LauncherActivity : Activity() {
                 previousApp?.let { launchApp(it) }
             }
         }
+
         recentGrid.setOnItemInteractionListener(object : EInkLauncherView.OnItemInteractionListener {
             override fun onItemClick(info: ResolveInfo) {
                 hideRecentTasks()
                 launchApp(info)
             }
 
-            override fun onItemLongClick(info: ResolveInfo) = Unit
+            @SuppressLint("SetTextI18n")
+            override fun onItemLongClick(info: ResolveInfo) {
+                val pkg = info.activityInfo.packageName
+                if (pkg == packageName) return
+                val label = info.loadLabel(packageManager).toString()
+
+                if (config.rootClear) {
+                    Thread {
+                        val success = RootUtil.forceStopPackage(pkg)
+                        runOnUiThread {
+                            if (success) {
+                                toast("已停止: $label")
+                                removeAppFromRecentUI(pkg)
+                            } else {
+                                toast("停止 $label 失败，请检查 Root 权限")
+                            }
+                        }
+                    }.start()
+                } else {
+                    val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                    runCatching {
+                        am.killBackgroundProcesses(pkg)
+                        toast("已请求清理: $label")
+                        removeAppFromRecentUI(pkg)
+                    }
+                }
+            }
         })
         recentGrid.setOnPageChangeListener(null)
+    }
+
+    private fun removeAppFromRecentUI(pkg: String) {
+        manuallyClearedApps.add(pkg)
+        val remaining = currentRecentApps()
+        if (remaining.isEmpty()) {
+            hideRecentTasks()
+        } else {
+            populateRecentGrid()
+        }
     }
 
     // ------------------------------------------------------------------ Info overlay
@@ -1127,7 +1119,6 @@ class LauncherActivity : Activity() {
             requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), REQ_WRITE_STORAGE)
             return
         }
-        // 4.2/4.4/5.x：WRITE_EXTERNAL_STORAGE 安装时授予，无需运行时申请。
         openWifiTransferOverlay()
     }
 
@@ -1203,7 +1194,6 @@ class LauncherActivity : Activity() {
 
     private fun setupInfoOverlay() {
         infoClose.setOnClickListener { hideInfo() }
-        // rowHelp / rowAbout / rowDonationPrompt 在 ensureSettingsPage() 中懒加载后绑定
     }
 
     private fun updateDonationPromptValue() {
@@ -1229,8 +1219,8 @@ class LauncherActivity : Activity() {
         populateRecentGrid()
     }
 
+    @SuppressLint("SetTextI18n")
     private fun populateRecentGrid() {
-        // UsageStatsManager / PACKAGE_USAGE_STATS 需要 API 21。
         if (Build.VERSION.SDK_INT < 21) {
             recentMessage.text = "最近任务需要 Android 5.0 及以上"
             recentMessage.setOnClickListener(null)
@@ -1266,14 +1256,10 @@ class LauncherActivity : Activity() {
         val rows = (apps.size + columns - 1) / columns
         recentGrid.configure(columns, rows, config.iconSize)
 
-        // ==========================================
-        // 核心修改区：动态计算行高，代替写死的 76dp
-        // ==========================================
-        val rowHeight = config.iconSize + 34 // 使用 +34dp 给予大图标下方的文字更多一点呼吸空间
+        val rowHeight = config.iconSize + 34
         recentGrid.layoutParams = recentGrid.layoutParams.apply {
             height = dp(rows * rowHeight)
         }
-        // ==========================================
 
         recentGrid.setApps(
             pageApps = apps,
@@ -1284,7 +1270,6 @@ class LauncherActivity : Activity() {
         )
     }
 
-    /** 当前最近任务列表（与 recents 界面显示的一致）。 */
     private fun currentRecentApps(): List<ResolveInfo> {
         val windowMs = config.recentWindowMs
         return if (windowMs > 0L) {
@@ -1294,42 +1279,54 @@ class LauncherActivity : Activity() {
         }
     }
 
-    /**
-     * 尽力清理最近任务中每个应用的后台进程。
-     * 普通应用没有 force-stop 权限，只能调用 killBackgroundProcesses；
-     * 前台有服务的应用不会被杀，但缓存/后台进程会被回收。
-     */
+    @SuppressLint("SetTextI18n")
     private fun killBackgroundApps(apps: List<ResolveInfo>) {
         if (apps.isEmpty()) return
-        if (Build.VERSION.SDK_INT >= 23 &&
-            checkSelfPermission(Manifest.permission.KILL_BACKGROUND_PROCESSES) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            Log.w(TAG, "KILL_BACKGROUND_PROCESSES not granted")
-            toast("缺少后台清理权限")
-            return
-        }
-        val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        var killed = 0
-        for (info in apps) {
-            val pkg = info.activityInfo.packageName
-            runCatching {
-                am.killBackgroundProcesses(pkg)
-                killed++
-            }.onFailure { e ->
-                Log.w(TAG, "killBackgroundProcesses failed for $pkg: ${e.message}")
+
+        if (config.rootClear) {
+            Thread {
+                // 修复：提取包名集合，并传递给批量强杀接口
+                val pkgs = apps.map { it.activityInfo.packageName }.filter { it != packageName }
+                if (pkgs.isNotEmpty()) {
+                    val success = RootUtil.forceStopPackages(pkgs)
+                    runOnUiThread {
+                        if (success) {
+                            toast("已彻底清理 ${pkgs.size} 个应用")
+                        } else {
+                            toast("清理完成，或未授予 Root 权限")
+                        }
+                    }
+                }
+            }.start()
+        } else {
+            if (Build.VERSION.SDK_INT >= 23 &&
+                checkSelfPermission(Manifest.permission.KILL_BACKGROUND_PROCESSES) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                Log.w(TAG, "KILL_BACKGROUND_PROCESSES not granted")
+                toast("缺少后台清理权限")
+                return
             }
-        }
-        if (killed > 0) {
-            Log.i(TAG, "killBackgroundProcesses requested for $killed packages")
-            toast("已清理 $killed 个后台应用")
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            var killed = 0
+            for (info in apps) {
+                val pkg = info.activityInfo.packageName
+                if (pkg == packageName) continue
+                runCatching {
+                    am.killBackgroundProcesses(pkg)
+                    killed++
+                }.onFailure { e ->
+                    Log.w(TAG, "killBackgroundProcesses failed for $pkg: ${e.message}")
+                }
+            }
+            if (killed > 0) {
+                Log.i(TAG, "killBackgroundProcesses requested for $killed packages")
+                toast("已清理 $killed 个后台应用")
+            }
         }
     }
 
-    /**
-     * Real background apps come from UsageStatsManager, sorted by the last
-     * time the user used them. Only launchable packages are shown.
-     */
+    @SuppressLint("NewApi")
     private fun loadRecentApps(since: Long = 0L): List<ResolveInfo> {
         if (Build.VERSION.SDK_INT < 21) return emptyList()
         val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
@@ -1347,6 +1344,7 @@ class LauncherActivity : Activity() {
             if (since > 0L && stat.lastTimeUsed < since) continue
             val pkg = stat.packageName
             if (pkg == packageName) continue
+            if (manuallyClearedApps.contains(pkg)) continue
             val launchIntent = packageManager.getLaunchIntentForPackage(pkg) ?: continue
             val info = runCatching { packageManager.resolveActivity(launchIntent, 0) }.getOrNull()
                 ?: continue
@@ -1357,6 +1355,7 @@ class LauncherActivity : Activity() {
         return apps
     }
 
+    @SuppressLint("NewApi")
     private fun usageAccessGranted(): Boolean {
         if (Build.VERSION.SDK_INT < 21) return false
         val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
@@ -1375,6 +1374,7 @@ class LauncherActivity : Activity() {
 
     private fun hideRecentTasks() {
         recentOverlay.visibility = View.GONE
+        manuallyClearedApps.clear()
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
