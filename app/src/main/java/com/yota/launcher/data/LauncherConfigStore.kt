@@ -25,7 +25,8 @@ class LauncherConfigStore(context: Context) {
             screenOffAnimation = prefs.getBoolean("screen_off_animation", true),
             screenOffAnimationStyle = prefs.getInt("screen_off_animation_style", 3),
             autoApplyEpdParams = prefs.getBoolean("auto_apply_epd_params", true),
-            iconSize = prefs.getInt("icon_size", 44)
+            iconSize = prefs.getInt("icon_size", 44),
+            rootClear = prefs.getBoolean("root_clear", false)
         )
     }
 
@@ -77,6 +78,7 @@ class LauncherConfigStore(context: Context) {
             .putInt("screen_off_animation_style", config.screenOffAnimationStyle)
             .putBoolean("auto_apply_epd_params", config.autoApplyEpdParams)
             .putInt("icon_size", config.iconSize)
+            .putBoolean("root_clear", config.rootClear)
             .apply()
     }
 
@@ -84,9 +86,19 @@ class LauncherConfigStore(context: Context) {
         prefs.edit().clear().apply()
     }
 
+    // --- 全局清理时间戳 ---
     fun markRecentCleared() {
         prefs.edit().putLong("recent_cleared_at", System.currentTimeMillis()).apply()
     }
 
     fun recentClearedAt(): Long = prefs.getLong("recent_cleared_at", 0L)
+
+    // --- 新增：单个 App 的清理时间戳 ---
+    fun markAppCleared(packageName: String) {
+        prefs.edit().putLong("recent_cleared_$packageName", System.currentTimeMillis()).apply()
+    }
+
+    fun appClearedAt(packageName: String): Long {
+        return prefs.getLong("recent_cleared_$packageName", 0L)
+    }
 }

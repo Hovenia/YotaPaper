@@ -310,7 +310,6 @@
                     android:textSize="16sp" />
             </LinearLayout>
 
-            <!-- 新增：图标大小设置项 -->
             <LinearLayout
                 android:id="@+id/rowIconSize"
                 android:layout_width="match_parent"
@@ -461,6 +460,35 @@
 
                 <TextView
                     android:id="@+id/settingsRecentCancelValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/gray"
+                    android:textSize="16sp" />
+            </LinearLayout>
+
+            <!-- 新增的 Root 清理开关 -->
+            <LinearLayout
+                android:id="@+id/rowRecentRootClear"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="2dp"
+                android:background="@drawable/bg_capsule"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingLeft="16dp"
+                android:paddingRight="16dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/settings_recent_root_clear"
+                    android:textColor="@color/ink"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/settingsRecentRootClearValue"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textColor="@color/gray"

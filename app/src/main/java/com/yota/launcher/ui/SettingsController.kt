@@ -43,8 +43,9 @@ class SettingsController(
     private lateinit var appDividersValue: TextView
     private lateinit var recentWindowValue: TextView
     private lateinit var recentCancelValue: TextView
+    private lateinit var recentRootClearValue: TextView // 新增
     private lateinit var iconPackValue: TextView
-    private lateinit var iconSizeValue: TextView // 新增
+    private lateinit var iconSizeValue: TextView
     private lateinit var lineIconsValue: TextView
     private lateinit var refreshModeValue: TextView
     private lateinit var pageAnimationValue: TextView
@@ -80,8 +81,9 @@ class SettingsController(
         appDividersValue = activity.findViewById(R.id.settingsAppDividersValue)
         recentWindowValue = activity.findViewById(R.id.settingsRecentWindowValue)
         recentCancelValue = activity.findViewById(R.id.settingsRecentCancelValue)
+        recentRootClearValue = activity.findViewById(R.id.settingsRecentRootClearValue) // 新增
         iconPackValue = activity.findViewById(R.id.settingsIconPackValue)
-        iconSizeValue = activity.findViewById(R.id.settingsIconSizeValue) // 新增
+        iconSizeValue = activity.findViewById(R.id.settingsIconSizeValue)
         lineIconsValue = activity.findViewById(R.id.settingsLineIconsValue)
         refreshModeValue = activity.findViewById(R.id.settingsRefreshModeValue)
         pageAnimationValue = activity.findViewById(R.id.settingsPageAnimationValue)
@@ -172,7 +174,6 @@ class SettingsController(
             }
         }
 
-        // 新增：调整图标大小
         activity.findViewById<View>(R.id.rowIconSize).setOnClickListener {
             val cfg = currentConfig()
             val options = intArrayOf(36, 40, 44, 48, 52, 56, 60)
@@ -211,6 +212,11 @@ class SettingsController(
             ) { index ->
                 onConfigChanged(currentConfig().copy(recentCancelBackToApp = index == 0), 0)
             }
+        }
+        // 新增：Root 清理点击事件
+        activity.findViewById<View>(R.id.rowRecentRootClear).setOnClickListener {
+            val cfg = currentConfig()
+            onConfigChanged(cfg.copy(rootClear = !cfg.rootClear), 0)
         }
         activity.findViewById<View>(R.id.rowRefreshMode).setOnClickListener {
             val cfg = currentConfig()
@@ -281,9 +287,6 @@ class SettingsController(
             onConfigChanged(LauncherConfig(), AFFECT_APPS or AFFECT_HOME or AFFECT_ICONS or AFFECT_REFRESH)
         }
 
-        // Non-Yota devices: hide the whole refresh/animation group; the SDK
-        // features it controls are Yota-only. Lock still falls back to the
-        // device-admin path in LauncherActivity.
         if (!showYotaSettings) {
             rowGroupRefresh.visibility = View.GONE
         }
@@ -304,8 +307,10 @@ class SettingsController(
             if (config.recentCancelBackToApp) R.string.recent_cancel_back_to_app
             else R.string.recent_cancel_back_to_home
         )
+        // 更新 Root 开关文案
+        recentRootClearValue.text = activity.getString(if (config.rootClear) R.string.divider_on else R.string.divider_off)
         iconPackValue.text = iconPackLabel(config.iconPack)
-        iconSizeValue.text = "${config.iconSize} dp" // 新增：显示当前图标大小
+        iconSizeValue.text = "${config.iconSize} dp"
         lineIconsValue.text = activity.getString(if (config.autoLineIcons) R.string.divider_on else R.string.divider_off)
         refreshModeValue.text = activity.getString(
             when (config.refreshMode) {
@@ -322,7 +327,6 @@ class SettingsController(
         updateAnimationVisibility(config)
     }
 
-    /** 动画设置跟随主模式：仅高画质模式显示动画相关行；其他模式显示提示。 */
     private fun updateAnimationVisibility(config: LauncherConfig) {
         val show = config.refreshMode == 0
         val v = if (show) View.VISIBLE else View.GONE
