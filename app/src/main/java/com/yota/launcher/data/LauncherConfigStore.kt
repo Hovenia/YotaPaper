@@ -26,7 +26,10 @@ class LauncherConfigStore(context: Context) {
             screenOffAnimationStyle = prefs.getInt("screen_off_animation_style", 3),
             autoApplyEpdParams = prefs.getBoolean("auto_apply_epd_params", true),
             iconSize = prefs.getInt("icon_size", 44),
-            rootClear = prefs.getBoolean("root_clear", false)
+            rootClear = prefs.getBoolean("root_clear", false),
+            // 新增控制中心配置
+            controlCenterEnabled = prefs.getBoolean("control_center_enabled", true),
+            controlCenterAnimation = prefs.getBoolean("control_center_animation", true)
         )
     }
 
@@ -79,6 +82,8 @@ class LauncherConfigStore(context: Context) {
             .putBoolean("auto_apply_epd_params", config.autoApplyEpdParams)
             .putInt("icon_size", config.iconSize)
             .putBoolean("root_clear", config.rootClear)
+            .putBoolean("control_center_enabled", config.controlCenterEnabled)
+            .putBoolean("control_center_animation", config.controlCenterAnimation)
             .apply()
     }
 

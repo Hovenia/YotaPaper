@@ -3,4 +3,14 @@
     <style name="Theme.YotaLauncher" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/paper</item>
     </style>
+
+    <!-- 控制中心专属主题（必须不透明，否则硬件拒绝执行动画） -->
+    <style name="Theme.ControlCenter" parent="android:Theme.DeviceDefault.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowBackground">@color/paper</item> <!-- 确保背景不透明 -->
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowAnimationStyle">@null</item> <!-- 彻底干掉安卓原生的滑动动画，防止干扰墨水屏 -->
+    </style>
 </resources>
