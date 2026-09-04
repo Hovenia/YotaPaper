@@ -20,6 +20,10 @@ class ControlCenterService : Service() {
     companion object {
         @Volatile
         var isPanelActive = false
+
+        /** LauncherActivity 是否在前台：前台走“主页窗口内浮层”（动画连贯），否则退回独立 Activity。 */
+        @Volatile
+        var launcherTop = false
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -38,7 +42,8 @@ class ControlCenterService : Service() {
         resources.displayMetrics.heightPixels
     }
 
-    private val topThreshold by lazy { (screenHeight * 0.25f).toInt() }
+    /** 下拉起手区：屏幕顶部 10%（EPD 1280px 高 → 顶部 128px 内起手才算“从顶部下拉”）。 */
+    private val topThreshold by lazy { (screenHeight * 0.10f).toInt() }
     private val swipeThreshold = 45
 
     private val panelStateReceiver = object : BroadcastReceiver() {
@@ -152,9 +157,15 @@ class ControlCenterService : Service() {
                                                 !isPanelActive && startY < topThreshold && delta > 0 -> {
                                                     pendingSwipe = true
                                                     mainHandler.post {
-                                                        val intent = Intent(this@ControlCenterService, ControlCenterActivity::class.java)
-                                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                                                        startActivity(intent)
+                                                        if (launcherTop) {
+                                                            // LauncherActivity 前台：并入主页窗口的浮层，动画与主页同机制
+                                                            sendBroadcast(Intent("com.yota.OPEN_PANEL"))
+                                                        } else {
+                                                            // 其它应用前台：退回独立窗口（保留“任何界面都能唤出”能力）
+                                                            val intent = Intent(this@ControlCenterService, ControlCenterActivity::class.java)
+                                                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                                                            startActivity(intent)
+                                                        }
                                                     }
                                                 }
                                                 isPanelActive && delta < 0 -> {

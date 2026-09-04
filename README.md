@@ -27,6 +27,15 @@ Yota Paper 是一款专为 Yota3（YOTA 3+，Android 7.1.1）墨水屏副屏设�
 - 双击「主页」标签（或双击背屏 HOME）打开，以**网格**展示，底部为取消栏
 - 默认只显示**最近 30 分钟**内使用过的应用；时间范围可设为 关 / 5分钟 / 30分钟 / 1小时 / 6小时 / 1天
 - 标题右侧一键**清空**；取消行为可选：回到上一应用 / 回到桌面
+- Root 清理（需开启「彻底清理后台」）：只强停仍在运行的应用，其余空闲任务跳过；运行中的应用**并发强停**，明显快于逐条串行；长按单个应用也可停止
+
+### 控制中心（下拉快捷面板）
+- 从**屏幕顶部（10% 高度内）下拉**呼出（需要 Root，用于监听触摸事件；仅 Yota 背屏触控有效）
+- 主页前台：在**主页窗口内**以浮层打开，开合动画与主页翻页动画同机制，**连贯无撕裂**
+- 其它应用前台：以独立窗口打开兜底，保证任何界面都能呼出；该场景**不播动画**（瞬时开合）
+- 内容：时钟 / 日期 / 电量 / WiFi / 蓝牙 / 省电模式 / 音量 / 音乐控制卡 / 通知列表（消息聚合、点击直达、单条关闭、一键清空）
+- 通知读取权限未开启时面板内可直接引导授权（Root 可用则静默授权）；面板动画受「刷新与动画 → 控制中心动画」开关控制，且仅在高画质模式生效
+- 上拉或按 BACK 收起（收起动画仅在主页浮层场景播放）
 
 ### 图标
 - 支持第三方图标包（appfilter 映射），未覆盖的应用回退系统图标
@@ -106,6 +115,7 @@ adb shell am start -n com.yota.launcher/.LauncherActivity
 | 文档 | 说明 |
 |---|---|
 | [CHANGELOG.md](CHANGELOG.md) | 发布日志 / 更新日志 |
+| [docs/release-notes-v0.5.md](docs/release-notes-v0.5.md) | v0.5 发布说明（控制中心合并重构等） |
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | 完整使用说明（交互逻辑） |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构与源码结构 |
 | [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) | 第三方依赖与许可证 |
@@ -127,4 +137,4 @@ adb shell am start -n com.yota.launcher/.LauncherActivity
 
 - 源码包名：`com.yota.launcher`
 - `applicationId`：`com.yota.launcher`
-- `versionName`：`0.3`（`versionCode 3`）
+- `versionName`：`0.5`（`versionCode 5`）

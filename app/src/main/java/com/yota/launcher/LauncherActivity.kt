@@ -37,6 +37,7 @@ import com.yota.launcher.epd.EpdManagerActivity
 import com.yota.launcher.epd.EpdParamsStore
 import com.yota.launcher.data.LauncherConfig
 import com.yota.launcher.data.LauncherConfigStore
+import com.yota.launcher.ui.ControlCenterPanel
 import com.yota.launcher.ui.EInkLauncherView
 import com.yota.launcher.ui.IconLoader
 import com.yota.launcher.ui.SettingsController
@@ -216,6 +217,19 @@ class LauncherActivity : Activity() {
         }
     }
 
+    // ============ 控制中心（并入主页窗口的浮层；桌面场景动画连贯） ============
+    private var controlPanel: ControlCenterPanel? = null
+
+    private val controlPanelReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                "com.yota.OPEN_PANEL" -> controlPanel?.openPanel()
+                "com.yota.ACTION_CLOSE_PANEL" -> controlPanel?.closePanel(animateToHome = true)
+            }
+        }
+    }
+    // ========================================================================
+
     override fun onCreate(savedInstanceState: Bundle?) {
         StartupTracer.start()
         super.onCreate(savedInstanceState)
@@ -296,6 +310,7 @@ class LauncherActivity : Activity() {
 
         registerTimeReceiver()
         registerPackageReceiver()
+        setupControlPanel()
         updateClock()
         statusController.update()
         StartupTracer.stage("clock/status")
@@ -321,6 +336,23 @@ class LauncherActivity : Activity() {
         stopService(Intent(this, ControlCenterService::class.java))
     }
 
+    // ============ 控制中心浮层装配 ============
+
+    private fun setupControlPanel() {
+        controlPanel = ControlCenterPanel(this)
+        controlPanel?.attach()
+        val filter = IntentFilter().apply {
+            addAction("com.yota.OPEN_PANEL")
+            addAction("com.yota.ACTION_CLOSE_PANEL")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(controlPanelReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(controlPanelReceiver, filter)
+        }
+    }
+
     // -------------------- 原有方法 --------------------
     private fun maybeShowGuide() {
         if (store.isGuideShown()) return
@@ -341,6 +373,9 @@ class LauncherActivity : Activity() {
         statusController.destroy()
         runCatching { unregisterReceiver(timeReceiver) }
         runCatching { unregisterReceiver(packageReceiver) }
+        runCatching { unregisterReceiver(controlPanelReceiver) }
+        controlPanel?.detach()
+        controlPanel = null
         wifiServer?.stop()
         wifiServer = null
     }
@@ -416,6 +451,7 @@ class LauncherActivity : Activity() {
     override fun onResume() {
         StartupTracer.stage("onResume-enter")
         super.onResume()
+        ControlCenterService.launcherTop = true
         if (yotaDevice) {
             YotaSdkAdapter.optOutOfSystemEpdParamsAsync(this) {
                 if (!isFinishing) applyRefreshMode(config)
@@ -440,10 +476,18 @@ class LauncherActivity : Activity() {
         maybePlayScreenOnAnimation()
         StartupTracer.stage("onResume-after-screenAnim")
 
+        // 从系统设置页（通知读取授权等）返回时补刷浮层
+        controlPanel?.onHostResume()
+
         // 确保控制中心服务状态与配置一致
         if (!config.controlCenterEnabled) {
             stopControlCenterService()
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        ControlCenterService.launcherTop = false
     }
 
     private fun maybePlayScreenOnAnimation() {
@@ -1322,10 +1366,25 @@ class LauncherActivity : Activity() {
             Thread {
                 val pkgs = apps.map { it.activityInfo.packageName }.filter { it != packageName }
                 if (pkgs.isNotEmpty()) {
-                    val success = RootUtil.forceStopPackages(pkgs)
+                    // D 方案：只对“仍有进程存活”的应用下 root force-stop（root 枚举，
+                    // 见 RootUtil.runningProcessPackages；不能用 getRunningAppProcesses，
+                    // API21+ 对三方应用只返回自身进程）。空闲项没有进程可杀，跳过即可。
+                    val running = RootUtil.runningProcessPackages(pkgs)
+                    val idle = pkgs.filter { it !in running }
+
+                    // B 方案：libsu 单壳是串行的，运行中的包改用独立 su 进程并发强停
+                    val success = if (running.isNotEmpty()) {
+                        RootUtil.forceStopPackagesParallel(running)
+                    } else true
+
                     runOnUiThread {
                         if (success) {
-                            toast("已彻底清理 ${pkgs.size} 个应用")
+                            val msg = when {
+                                running.isEmpty() -> "已清理 ${idle.size} 个后台任务"
+                                idle.isEmpty() -> "已彻底清理 ${running.size} 个应用"
+                                else -> "已清理 ${running.size} 个运行中应用、${idle.size} 个空闲任务"
+                            }
+                            toast(msg)
                         } else {
                             toast("清理完成，或未授予 Root 权限")
                         }
@@ -1492,6 +1551,7 @@ class LauncherActivity : Activity() {
         return when (keyCode) {
             KeyEvent.KEYCODE_BACK -> {
                 when {
+                    controlPanel?.isVisible == true -> controlPanel?.closePanel(animateToHome = true)
                     infoOverlay.visibility == View.VISIBLE -> hideInfo()
                     selectOverlay.visibility == View.VISIBLE -> hideSelectOverlay()
                     wifiOverlay.visibility == View.VISIBLE -> closeWifiTransfer()
