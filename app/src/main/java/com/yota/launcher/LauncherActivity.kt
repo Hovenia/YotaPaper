@@ -304,8 +304,24 @@ class LauncherActivity : Activity() {
 
         maybeShowGuide()
         StartupTracer.stage("guide")
+
+        // ================= 控制中心服务启动（根据配置） =================
+        if (config.controlCenterEnabled) {
+            startControlCenterService()
+        }
+        // =============================================================
     }
 
+    // ===================== 控制中心服务管理 =====================
+    private fun startControlCenterService() {
+        startService(Intent(this, ControlCenterService::class.java))
+    }
+
+    private fun stopControlCenterService() {
+        stopService(Intent(this, ControlCenterService::class.java))
+    }
+
+    // -------------------- 原有方法 --------------------
     private fun maybeShowGuide() {
         if (store.isGuideShown()) return
         guideOverlay.visibility = View.VISIBLE
@@ -423,6 +439,11 @@ class LauncherActivity : Activity() {
         StartupTracer.stage("onResume-before-screenAnim")
         maybePlayScreenOnAnimation()
         StartupTracer.stage("onResume-after-screenAnim")
+
+        // 确保控制中心服务状态与配置一致
+        if (!config.controlCenterEnabled) {
+            stopControlCenterService()
+        }
     }
 
     private fun maybePlayScreenOnAnimation() {
@@ -641,6 +662,7 @@ class LauncherActivity : Activity() {
     }
 
     private fun onConfigChanged(newConfig: LauncherConfig, affected: Int) {
+        val oldConfig = config
         config = newConfig
         store.save(config)
         settingsController.updateValues(config)
@@ -653,6 +675,15 @@ class LauncherActivity : Activity() {
         if (affected and SettingsController.AFFECT_HOME != 0) refreshHome()
         if (affected and SettingsController.AFFECT_APPS != 0) refreshApps()
         if (affected and SettingsController.AFFECT_REFRESH != 0) applyRefreshMode(config)
+
+        // 控制中心状态变化
+        if (oldConfig.controlCenterEnabled != newConfig.controlCenterEnabled) {
+            if (newConfig.controlCenterEnabled) {
+                startControlCenterService()
+            } else {
+                stopControlCenterService()
+            }
+        }
     }
 
     private fun applyRefreshMode(cfg: LauncherConfig = config) {
@@ -992,7 +1023,6 @@ class LauncherActivity : Activity() {
         }
         recentCancel.setOnClickListener {
             hideRecentTasks()
-            // 如果 previousApp 被单清置空了，这里 let 就不会执行，自然就安全留在桌面
             if (config.recentCancelBackToApp) {
                 previousApp?.let { launchApp(it) }
             }
@@ -1052,8 +1082,6 @@ class LauncherActivity : Activity() {
             populateRecentGrid()
         }
     }
-
-
 
     // ------------------------------------------------------------------ Info overlay
 

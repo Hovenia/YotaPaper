@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- 新增下面这一行，强行忽略 libsu 的 API 19 限制 -->
+    <!-- 强行忽略 libsu 的 API 19 限制 -->
     <uses-sdk tools:overrideLibrary="com.topjohnwu.superuser" />
 
     <uses-permission android:name="com.yotadevices.permission.ACCESS_BACK_SCREEN" />
@@ -20,6 +20,10 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 保留悬浮窗权限，防止部分系统底层权限校验问题 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
 
     <application
         android:allowBackup="true"
@@ -63,6 +67,29 @@
             android:name=".epd.EpdManagerActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+
+
+        <activity
+            android:name=".ui.ControlCenterActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ControlCenter"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true" />
+
+        <!-- 纯后台手势监听服务 -->
+        <service
+            android:name=".ControlCenterService"
+            android:exported="false" />
+
+        <!-- 通知与媒体读取服务 -->
+        <service
+            android:name=".NotificationReaderService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
         <receiver
             android:name=".LockAdminReceiver"

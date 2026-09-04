@@ -72,6 +72,17 @@ class SettingsController(
     private lateinit var groupRefreshChevron: TextView
     private lateinit var groupRefreshContent: View
 
+    // 新增：控制中心分组折叠控件
+    private lateinit var rowGroupControlCenter: View
+    private lateinit var groupControlCenterChevron: TextView
+    private lateinit var groupControlCenterContent: View
+
+    // 新增：控制中心开关行（已存在但确保绑定）
+    private lateinit var rowControlCenter: View
+    private lateinit var settingsControlCenterValue: TextView
+    private lateinit var rowControlCenterAnimation: View
+    private lateinit var settingsControlCenterAnimationValue: TextView
+
     fun bind() {
         colsValue = activity.findViewById(R.id.settingsColsValue)
         rowsValue = activity.findViewById(R.id.settingsRowsValue)
@@ -81,7 +92,7 @@ class SettingsController(
         appDividersValue = activity.findViewById(R.id.settingsAppDividersValue)
         recentWindowValue = activity.findViewById(R.id.settingsRecentWindowValue)
         recentCancelValue = activity.findViewById(R.id.settingsRecentCancelValue)
-        recentRootClearValue = activity.findViewById(R.id.settingsRecentRootClearValue) // 新增
+        recentRootClearValue = activity.findViewById(R.id.settingsRecentRootClearValue)
         iconPackValue = activity.findViewById(R.id.settingsIconPackValue)
         iconSizeValue = activity.findViewById(R.id.settingsIconSizeValue)
         lineIconsValue = activity.findViewById(R.id.settingsLineIconsValue)
@@ -109,6 +120,17 @@ class SettingsController(
         rowGroupRefresh = activity.findViewById(R.id.rowGroupRefresh)
         groupRefreshChevron = activity.findViewById(R.id.groupRefreshChevron)
         groupRefreshContent = activity.findViewById(R.id.groupRefreshContent)
+
+        // 新增：控制中心分组折叠
+        rowGroupControlCenter = activity.findViewById(R.id.rowGroupControlCenter)
+        groupControlCenterChevron = activity.findViewById(R.id.groupControlCenterChevron)
+        groupControlCenterContent = activity.findViewById(R.id.groupControlCenterContent)
+
+        // 新增：控制中心开关行
+        rowControlCenter = activity.findViewById(R.id.rowControlCenter)
+        settingsControlCenterValue = activity.findViewById(R.id.settingsControlCenterValue)
+        rowControlCenterAnimation = activity.findViewById(R.id.rowControlCenterAnimation)
+        settingsControlCenterAnimationValue = activity.findViewById(R.id.settingsControlCenterAnimationValue)
     }
 
     fun setup(initial: LauncherConfig) {
@@ -213,11 +235,13 @@ class SettingsController(
                 onConfigChanged(currentConfig().copy(recentCancelBackToApp = index == 0), 0)
             }
         }
+
         // 新增：Root 清理点击事件
         activity.findViewById<View>(R.id.rowRecentRootClear).setOnClickListener {
             val cfg = currentConfig()
             onConfigChanged(cfg.copy(rootClear = !cfg.rootClear), 0)
         }
+
         activity.findViewById<View>(R.id.rowRefreshMode).setOnClickListener {
             val cfg = currentConfig()
             val options = listOf(
@@ -270,6 +294,19 @@ class SettingsController(
                 onConfigChanged(currentConfig().copy(screenOffAnimationStyle = index + 1), 0)
             }
         }
+
+        // 新增：控制中心总开关
+        rowControlCenter.setOnClickListener {
+            val cfg = currentConfig()
+            onConfigChanged(cfg.copy(controlCenterEnabled = !cfg.controlCenterEnabled), 0)
+        }
+        // 新增：控制中心动画开关
+        rowControlCenterAnimation.setOnClickListener {
+            val cfg = currentConfig()
+            onConfigChanged(cfg.copy(controlCenterAnimation = !cfg.controlCenterAnimation), 0)
+        }
+
+        // 分组折叠逻辑
         rowGroupGrid.setOnClickListener {
             toggleGroup(groupGridContent, groupGridChevron)
         }
@@ -278,6 +315,10 @@ class SettingsController(
         }
         rowGroupRecent.setOnClickListener {
             toggleGroup(groupRecentContent, groupRecentChevron)
+        }
+        // 新增：控制中心分组折叠
+        rowGroupControlCenter.setOnClickListener {
+            toggleGroup(groupControlCenterContent, groupControlCenterChevron)
         }
         rowGroupRefresh.setOnClickListener {
             toggleGroup(groupRefreshContent, groupRefreshChevron)
@@ -303,11 +344,7 @@ class SettingsController(
         homeDividersValue.text = activity.getString(if (config.showHomeDividers) R.string.divider_on else R.string.divider_off)
         appDividersValue.text = activity.getString(if (config.showAppDividers) R.string.divider_on else R.string.divider_off)
         recentWindowValue.text = activity.getString(windowLabel(config.recentWindowMs))
-        recentCancelValue.text = activity.getString(
-            if (config.recentCancelBackToApp) R.string.recent_cancel_back_to_app
-            else R.string.recent_cancel_back_to_home
-        )
-        // 更新 Root 开关文案
+        recentCancelValue.text = activity.getString(if (config.recentCancelBackToApp) R.string.recent_cancel_back_to_app else R.string.recent_cancel_back_to_home)
         recentRootClearValue.text = activity.getString(if (config.rootClear) R.string.divider_on else R.string.divider_off)
         iconPackValue.text = iconPackLabel(config.iconPack)
         iconSizeValue.text = "${config.iconSize} dp"
@@ -325,6 +362,10 @@ class SettingsController(
         screenOffAnimationValue.text = activity.getString(if (config.screenOffAnimation) R.string.divider_on else R.string.divider_off)
         screenOffAnimationStyleValue.text = activity.getString(animationStyleLabel(config.screenOffAnimationStyle))
         updateAnimationVisibility(config)
+
+        // 更新控制中心值
+        settingsControlCenterValue.text = activity.getString(if (config.controlCenterEnabled) R.string.divider_on else R.string.divider_off)
+        settingsControlCenterAnimationValue.text = activity.getString(if (config.controlCenterAnimation) R.string.divider_on else R.string.divider_off)
     }
 
     private fun updateAnimationVisibility(config: LauncherConfig) {
@@ -348,6 +389,7 @@ class SettingsController(
         setGroupExpanded(groupGridContent, groupGridChevron, false)
         setGroupExpanded(groupIconsContent, groupIconsChevron, false)
         setGroupExpanded(groupRecentContent, groupRecentChevron, false)
+        setGroupExpanded(groupControlCenterContent, groupControlCenterChevron, false)
         setGroupExpanded(groupRefreshContent, groupRefreshChevron, false)
     }
 

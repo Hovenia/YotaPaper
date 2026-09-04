@@ -19,5 +19,7 @@ data class LauncherConfig(
     val screenOffAnimationStyle: Int = 3,   // 息屏动画样式（默认水平闭合）
     val autoApplyEpdParams: Boolean = true, // EPD 参数自动同步/应用总开关（默认开）
     val iconSize: Int = 44,                 // 图标大小（单位 dp，默认 44）
-    val rootClear: Boolean = false          // 是否使用 Root 清理后台（默认关）
+    val rootClear: Boolean = false,          // 是否使用 Root 清理后台（默认关）
+    val controlCenterEnabled: Boolean = true,   // 控制中心总开关
+    val controlCenterAnimation: Boolean = true  // 控制中心翻页动画
 )

@@ -14,6 +14,19 @@ object RootUtil {
         )
     }
 
+    /**
+     * 检查当前是否具有 Root 权限（Shell 是否以 root 身份运行）
+     */
+    fun isRootAvailable(): Boolean {
+        return try {
+            val shell = Shell.getShell()
+            shell.isRoot
+        } catch (e: Exception) {
+            Log.e("RootUtil", "isRootAvailable failed", e)
+            false
+        }
+    }
+
     fun forceStopPackage(packageName: String): Boolean {
         return forceStopPackages(listOf(packageName))
     }

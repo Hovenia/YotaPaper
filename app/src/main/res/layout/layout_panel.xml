@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- 顶部时间与状态 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="24dp">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:id="@+id/tv_time" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="00:00" android:textColor="#000000" android:textSize="48sp" android:textStyle="bold" android:includeFontPadding="false"/>
+            <TextView android:id="@+id/tv_date" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1月1日 星期一" android:textColor="#000000" android:textSize="14sp" android:textStyle="bold" android:layout_marginTop="4dp"/>
+        </LinearLayout>
+        <TextView android:id="@+id/tv_battery" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="电量: --%" android:textColor="#000000" android:textSize="14sp" android:textStyle="bold" android:layout_marginTop="8dp"/>
+    </LinearLayout>
+
+    <!-- 快捷开关 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:orientation="horizontal">
+        <LinearLayout android:id="@+id/btn_wifi" android:layout_width="0dp" android:layout_height="70dp" android:layout_marginEnd="8dp" android:layout_weight="1" android:background="@drawable/bg_btn_off" android:gravity="center" android:orientation="vertical" android:clickable="true" android:focusable="true">
+            <TextView android:id="@+id/tv_wifi_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="WLAN" android:textColor="#000000" android:textSize="13sp" android:textStyle="bold" />
+            <TextView android:id="@+id/tv_wifi_sub" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginHorizontal="6dp" android:layout_marginTop="2dp" android:gravity="center" android:ellipsize="end" android:singleLine="true" android:textColor="#000000" android:textSize="10sp" android:visibility="gone" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/btn_bluetooth" android:layout_width="0dp" android:layout_height="70dp" android:layout_marginEnd="8dp" android:layout_weight="1" android:background="@drawable/bg_btn_off" android:gravity="center" android:orientation="vertical" android:clickable="true" android:focusable="true">
+            <TextView android:id="@+id/tv_bt_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="蓝牙" android:textColor="#000000" android:textSize="13sp" android:textStyle="bold" />
+            <TextView android:id="@+id/tv_bt_sub" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginHorizontal="6dp" android:layout_marginTop="2dp" android:gravity="center" android:ellipsize="end" android:singleLine="true" android:textColor="#000000" android:textSize="10sp" android:visibility="gone" />
+        </LinearLayout>
+        <TextView android:id="@+id/btn_saver" android:layout_width="0dp" android:layout_height="70dp" android:layout_marginEnd="8dp" android:layout_weight="1" android:background="@drawable/bg_btn_off" android:gravity="center" android:text="省电模式" android:textColor="#000000" android:textSize="13sp" android:textStyle="bold" />
+        <TextView android:id="@+id/btn_settings" android:layout_width="0dp" android:layout_height="70dp" android:layout_weight="1" android:background="@drawable/bg_btn_off" android:gravity="center" android:text="设置" android:textColor="#000000" android:textSize="13sp" android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 音量控制 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="16dp">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="音量"
+            android:textColor="#000000"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+        <TextView
+            android:id="@+id/tv_volume_percent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="50%"
+            android:textColor="#000000"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginStart="8dp" />
+        <SeekBar
+            android:id="@+id/volume_slider"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="16dp"
+            android:minHeight="30dp"
+            android:progressTint="#000000"
+            android:thumb="@drawable/seekbar_thumb"
+            android:thumbTint="#000000" />
+    </LinearLayout>
+
+    <!-- 媒体卡片 (移动到了通知清除按钮的上方) -->
+    <LinearLayout
+        android:id="@+id/card_media"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_btn_off"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="10dp"
+        android:visibility="gone"
+        android:layout_marginBottom="8dp">
+
+        <LinearLayout
+            android:id="@+id/media_info_area"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginEnd="8dp"
+            android:padding="6dp">
+            <TextView android:id="@+id/tv_media_app_name" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🎵 正在播放" android:textColor="#000000" android:textSize="10sp" android:textStyle="bold" />
+            <TextView android:id="@+id/tv_media_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="获取中..." android:textColor="#000000" android:textSize="15sp" android:textStyle="bold" android:singleLine="true" android:ellipsize="end" android:layout_marginTop="2dp" />
+            <TextView android:id="@+id/tv_media_artist" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text=" " android:textColor="#000000" android:textSize="11sp" android:singleLine="true" android:ellipsize="end" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView android:id="@+id/btn_media_prev" android:layout_width="40dp" android:layout_height="40dp" android:gravity="center" android:text="|◁" android:textStyle="bold" android:textSize="18sp" android:textColor="#000000" />
+            <TextView android:id="@+id/btn_media_play" android:layout_width="40dp" android:layout_height="40dp" android:gravity="center" android:text="||" android:textStyle="bold" android:textSize="18sp" android:textColor="#000000" />
+            <TextView android:id="@+id/btn_media_next" android:layout_width="40dp" android:layout_height="40dp" android:gravity="center" android:text="▷|" android:textStyle="bold" android:textSize="18sp" android:textColor="#000000" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 一键清除 (移动到了媒体卡片的下方，紧贴通知列表) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="end"
+        android:layout_marginBottom="16dp">
+        <TextView
+            android:id="@+id/btn_clear_notif"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_btn_clear"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:text="一键清除"
+            android:textColor="#000000"
+            android:textSize="12sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- 通知列表 -->
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <LinearLayout android:id="@+id/notification_container" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+    </ScrollView>
+
+</LinearLayout>
